@@ -124,6 +124,17 @@ picocom /dev/ttyACM3 -b 115200
 
 This firmware uses the ESP-IDF 2nd stage bootloader. The bootloader is pre-flashed on most ESP32-S3 development boards.
 
+### espflash.toml and fresh clones
+
+`espflash.toml` points espflash at the silent bootloader binary under
+`bootloader/build/`, which is gitignored. On a fresh clone that file does
+not exist and every `espflash flash` run from the repo directory fails with
+a misleading "Error while connecting to device" - espflash reads the config
+from the working directory and gives no missing-file error. Either build
+the bootloader first (next section), comment the override out of
+`espflash.toml`, or flash from outside the repo directory to fall back to
+espflash's bundled bootloader.
+
 ### Flashing the Bootloader from Scratch
 
 If you need to flash the bootloader (e.g., on a new chip or after corruption):

@@ -3,6 +3,21 @@
 ESP32-S3 + WIO-SX1262 LoRa firmware (Rust/Embassy). The PCB design lives in
 `hardware-design/`.
 
+## Flashing gotchas (espflash)
+
+- `espflash.toml` names the silent-bootloader binary under
+  `bootloader/build/`, which is GITIGNORED. On a fresh clone that path does
+  not exist and espflash fails with a misleading "Error while connecting to
+  device" (no missing-file error, and it happens after the chip info prints).
+  Build the bootloader first, comment the override out, or run espflash from
+  outside the repo directory (the config is read from the working directory).
+- USB CDC frames must never end on a full 64-byte packet: bulk transfers
+  only complete on a short packet, so `src/usb/cdc_io.rs` caps writes at 63
+  bytes. A response whose COBS-encoded size landed exactly on the boundary
+  sat undelivered in the host's CDC driver until unrelated bytes flushed it
+  (found and hardware-verified on the LoRaMqttHub fork, which shares this
+  file).
+
 ## Hardware diagrams
 
 `hardware-design/diagrams/` holds generated views of the board:
