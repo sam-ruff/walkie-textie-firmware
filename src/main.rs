@@ -13,7 +13,8 @@ esp_bootloader_esp_idf::esp_app_desc!(
     "0.0.0",                    // idf_ver (not using IDF)
     0x10000,                    // mmu_page_size (64KB)
     0,                          // min_efuse_blk_rev_full (accept all)
-    u16::MAX                    // max_efuse_blk_rev_full (accept all)
+    u16::MAX,                   // max_efuse_blk_rev_full (accept all)
+    0                           // secure_version (anti-rollback unused)
 );
 
 use embassy_executor::Spawner;
@@ -21,6 +22,7 @@ use embassy_usb::class::cdc_acm::{CdcAcmClass, State};
 use embassy_usb::UsbDevice;
 use esp_backtrace as _;
 use esp_hal::gpio::{Input, InputConfig, Level, Output, OutputConfig, Pull};
+use esp_hal::interrupt::software::SoftwareInterruptControl;
 use esp_hal::otg_fs::asynch::{Config as DriverConfig, Driver};
 use esp_hal::otg_fs::Usb;
 use esp_hal::spi::master::{Config as SpiConfig, Spi};
@@ -45,9 +47,6 @@ use tasks::{AdminReceiver, CommandReceiver, CommandSender, LedReceiver, LedSende
 /// Static executor for embassy
 static EXECUTOR: StaticCell<esp_rtos::embassy::Executor> = StaticCell::new();
 
-/// Static cell for esp-radio controller (needed for 'static lifetime)
-static RADIO_CONTROLLER: StaticCell<esp_radio::Controller<'static>> = StaticCell::new();
-
 // USB static buffers (must be 'static for embassy-usb)
 static EP_OUT_BUFFER: StaticCell<[u8; 1024]> = StaticCell::new();
 static DATA_CDC_STATE: StaticCell<State<'static>> = StaticCell::new();
@@ -71,7 +70,8 @@ fn main() -> ! {
 
     // Initialise the RTOS scheduler with timer - MUST be done before any async operations
     let timg0 = TimerGroup::new(peripherals.TIMG0);
-    esp_rtos::start(timg0.timer0);
+    let sw_ints = SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
+    esp_rtos::start(timg0.timer0, sw_ints.software_interrupt0);
 
     // Configure SPI for LoRa
     let sclk = peripherals.GPIO7;
@@ -109,7 +109,8 @@ fn main() -> ! {
 
     // Read unique device ID from eFuse MAC address (last 3 bytes). Used for both
     // the USB serial and the BLE advertised name so each board is distinct.
-    let mac = esp_hal::efuse::Efuse::read_base_mac_address();
+    let mac = esp_hal::efuse::base_mac_address();
+    let mac = mac.as_bytes();
     let device_id: [u8; 3] = [mac[3], mac[4], mac[5]];
     let usb_serial = format_usb_serial(USB_SERIAL.init([0u8; 9]), device_id);
 
@@ -151,14 +152,9 @@ fn main() -> ! {
     // Build the USB device
     let usb_device = builder.build();
 
-    // Initialise esp-radio for BLE support (must be after esp_rtos::start)
-    let radio_controller = RADIO_CONTROLLER.init(
-        esp_radio::init().expect("Failed to initialize esp-radio")
-    );
-
-    // Create BLE connector (ownership is passed to ExternalController)
+    // Create BLE connector (must be after esp_rtos::start; esp-radio initialises
+    // itself on first use). Ownership is passed to ExternalController.
     let ble_connector = esp_radio::ble::controller::BleConnector::new(
-        radio_controller,
         peripherals.BT,
         esp_radio::ble::Config::default(),
     ).expect("Failed to initialize BLE connector");
@@ -170,7 +166,7 @@ fn main() -> ! {
     // Create and run the embassy executor
     let executor = EXECUTOR.init(esp_rtos::embassy::Executor::new());
     executor.run(|spawner| {
-        spawner.must_spawn(async_main(spawner, usb_device, data_cdc, debug_cdc, lora_driver, led, controller, device_id));
+        spawner.spawn(async_main(spawner, usb_device, data_cdc, debug_cdc, lora_driver, led, controller, device_id).expect("task pool exhausted"));
     })
 }
 
@@ -232,14 +228,14 @@ async fn async_main(
     let data_writer = usb::CdcWriter::new(data_tx);
 
     // Spawn USB device task (must run to handle USB events)
-    spawner.spawn(usb_device_wrapper(usb_device)).unwrap();
+    spawner.spawn(usb_device_wrapper(usb_device).expect("task pool exhausted"));
 
     // Spawn serial tasks using data CDC
-    spawner.spawn(serial_reader_wrapper(data_reader, command_sender)).unwrap();
-    spawner.spawn(serial_writer_wrapper(data_writer)).unwrap();
+    spawner.spawn(serial_reader_wrapper(data_reader, command_sender).expect("task pool exhausted"));
+    spawner.spawn(serial_writer_wrapper(data_writer).expect("task pool exhausted"));
 
     // Spawn debug writer task
-    spawner.spawn(debug_writer_wrapper(debug_tx)).unwrap();
+    spawner.spawn(debug_writer_wrapper(debug_tx).expect("task pool exhausted"));
 
     // Log startup message
     debug!("Walkie-Textie v{}.{}.{} starting...",
@@ -251,10 +247,10 @@ async fn async_main(
 
     // Spawn other tasks
     debug!("Starting tasks...");
-    spawner.spawn(admin_wrapper(admin_receiver)).unwrap();
-    spawner.spawn(lora_wrapper(lora_driver, command_receiver, led_sender)).unwrap();
-    spawner.spawn(led_wrapper(led, led_receiver)).unwrap();
-    spawner.spawn(ble_wrapper(ble_controller, device_id)).unwrap();
+    spawner.spawn(admin_wrapper(admin_receiver).expect("task pool exhausted"));
+    spawner.spawn(lora_wrapper(lora_driver, command_receiver, led_sender).expect("task pool exhausted"));
+    spawner.spawn(led_wrapper(led, led_receiver).expect("task pool exhausted"));
+    spawner.spawn(ble_wrapper(ble_controller, device_id).expect("task pool exhausted"));
     debug!("All tasks started");
 }
 

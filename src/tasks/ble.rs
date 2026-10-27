@@ -178,7 +178,7 @@ where
             // otherwise negotiates parameters that drop this link after ~6s;
             // native apps avoid it via high connection priority, which Web
             // Bluetooth cannot request, so we ask for it from the peripheral side.
-            let conn_params = ConnectParams {
+            let conn_params = RequestedConnParams {
                 min_connection_interval: Duration::from_millis(15),
                 max_connection_interval: Duration::from_millis(30),
                 max_latency: 0,
@@ -270,6 +270,9 @@ where
                                     }
                                     GattEvent::Other(other_event) => {
                                         let _ = other_event.accept();
+                                    }
+                                    GattEvent::NotAllowed(not_allowed_event) => {
+                                        let _ = not_allowed_event.accept();
                                     }
                                 }
                             }

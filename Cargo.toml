@@ -11,39 +11,43 @@ required-features = ["embedded"]
 
 [dependencies]
 # ESP HAL and RTOS (only for embedded target)
-esp-hal = { version = "1.0", features = ["esp32s3", "unstable"], optional = true }
-esp-rtos = { version = "0.2", features = ["esp32s3", "embassy", "esp-radio"], optional = true }
-esp-bootloader-esp-idf = { version = "0.4", default-features = false, features = ["esp32s3"], optional = true }
-esp-backtrace = { version = "0.18", features = ["esp32s3", "panic-handler", "println"], optional = true }
-esp-println = { version = "0.16", default-features = false, features = ["esp32s3", "jtag-serial"], optional = true }
+esp-hal = { version = "1.1", features = ["esp32s3", "unstable"], optional = true }
+esp-rtos = { version = "0.3", features = ["esp32s3", "embassy", "esp-radio"], optional = true }
+esp-bootloader-esp-idf = { version = "0.5", default-features = false, features = ["esp32s3"], optional = true }
+esp-backtrace = { version = "0.19", features = ["esp32s3", "panic-handler", "println"], optional = true }
+esp-println = { version = "0.17", default-features = false, features = ["esp32s3", "jtag-serial"], optional = true }
 
 # Embassy async runtime (versions must match esp-rtos dependencies)
-embassy-executor = { version = "0.9", optional = true }
+embassy-executor = { version = "0.10", optional = true }
+# Held at 0.7 to match trouble-host 0.6, whose gatt macros name embassy_sync
+# from this crate; esp-hal/esp-rtos use 0.8 internally, which coexists fine.
 embassy-sync = { version = "0.7", optional = true }
 embassy-time = { version = "0.5", optional = true }
 
 # Embedded HAL traits (only for embedded target)
 embedded-hal = { version = "1.0", optional = true }
 embedded-hal-async = { version = "1.0", optional = true }
-embedded-io = { version = "0.6", optional = true }
-embedded-io-async = { version = "0.6", optional = true }
+embedded-io = { version = "0.7", optional = true }
+embedded-io-async = { version = "0.7", optional = true }
 
 # Static allocation (only for embedded target)
 static_cell = { version = "2.1", optional = true }
 
-# BLE support via esp-radio and TrouBLE
-esp-radio = { version = "0.17", features = ["esp32s3", "ble", "unstable"], optional = true }
-trouble-host = { version = "0.5", default-features = false, features = ["peripheral", "gatt", "derive", "default-packet-pool"], optional = true }
+# BLE support via esp-radio and TrouBLE. trouble-host stays on 0.6 (bt-hci 0.8)
+# because esp-radio's controller implements bt-hci 0.8, not the 0.9 that
+# trouble-host 0.7 requires.
+esp-radio = { version = "0.18", features = ["esp32s3", "ble", "unstable"], optional = true }
+trouble-host = { version = "0.6", default-features = false, features = ["peripheral", "gatt", "derive", "default-packet-pool"], optional = true }
 # Direct access to bt-hci command types so the BLE task can request connection
 # parameters (interval / supervision timeout) from the central after connecting.
-bt-hci = { version = "0.6", default-features = false, optional = true }
-esp-alloc = { version = "0.9", optional = true }
+bt-hci = { version = "0.8", default-features = false, optional = true }
+esp-alloc = { version = "0.10", optional = true }
 
 # Async utilities for BLE
 embassy-futures = { version = "0.1", optional = true }
 
 # USB OTG support for dual CDC-ACM
-embassy-usb = { version = "0.5", default-features = false, features = ["max-interface-count-4", "max-handler-count-4"], optional = true }
+embassy-usb = { version = "0.6", default-features = false, features = ["max-interface-count-4", "max-handler-count-4"], optional = true }
 
 # Shared wire protocol (COBS framing, CRC, command/response codec), as a submodule
 wt-protocol = { path = "vendor/wt-protocol", default-features = false }
