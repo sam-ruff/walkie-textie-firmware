@@ -18,7 +18,7 @@ Gerbers:
 | Order | Differs from the product by | Use |
 | --- | --- | --- |
 | node (`fab/`) | Nothing. R37 holds the converter on | The radio product, and every chamber test of it |
-| timed (`fab/timed/`) | R37 left out, so the wake timer cuts the power | The sensor product, and every chamber test of it |
+| timed (`fab/timed/`) | R37 left out, so the wake timer cuts the power, and C40 left out to keep the current low while it is off | The sensor product, and every chamber test of it |
 | bench-test (`fab/bench-test/`) | J3 and R31 fitted, L5 and L6 left out: the radio is on the test connector and the antenna is cut off | The conducted tests at J3 |
 | antenna-test (`fab/antenna-test/`) | J3 and R31 fitted, R30 left out: the antenna is on the test connector and the radio is cut off | Tuning the antenna on a VNA. Never power one |
 
@@ -26,7 +26,8 @@ But no V3.1 board has been built, so nothing here has been run. Three things
 have to happen before a chamber is worth booking. The firmware has to be
 proved on a board: on 10 November 2026 its LoRa bandwidth was halved to
 125 kHz, because the 250 kHz it used was not going to pass T1 (see "What the
-design predicts"), and that change has only been through host tests. The
+design predicts"), and it began to drive the LoRa module's antenna switch
+enable from GPIO38. Both changes have only been through host tests. The
 factory test build has to be proved the same way: its radio commands are
 covered by host tests and it builds for the ESP32-S3, but it has never keyed
 a real transmitter. And the 868 MHz antenna match has to be tuned on a VNA,
@@ -189,14 +190,13 @@ board.
 3. Read the conducted power and the harmonics at 1739 MHz and 2609 MHz. The
    Wio-SX1262 datasheet gives -45 dBm or better above 1 GHz. The limit in T4
    is -30 dBm, so a healthy module has 15 dB in hand before the antenna.
-4. Read the conducted power again with the module's RF_SW pin held low: tie
-   the end of R25 nearer the module to ground through 1 kohm while the
-   carrier is on. The board holds that pin high all the time, because the
-   firmware never drives GPIO38, and Seeed's datasheet for the module has it
-   low while transmitting. If the power is the same both ways, the pin's
-   level does not matter in transmit and nothing needs doing. If it is lower
-   as built, the firmware has to drive GPIO38 (high to receive, low
-   otherwise) before any of the tests below mean anything.
+4. Put a scope probe on the end of R25 nearer the module, which is the
+   module's RF_SW pin. The firmware holds it high while the radio listens
+   and low while it transmits or idles, as Seeed's datasheet for the module
+   asks. It should be low for as long as the carrier is on and go high
+   again after `s`. If it stays high, the board has firmware from before
+   10 November 2026, which never drove GPIO38: flash the current firmware
+   before any of the tests below.
 
 Never transmit on a board from the antenna-test order. Its radio has no load.
 
@@ -261,7 +261,8 @@ bench tests at J3, in the next section.
 For T6 as the soil sensor, the job is one wake, read and transmit every
 15 minutes, which gives the analyser almost nothing to hold. Run a test build
 that repeats the cycle without sleeping, on a board from the node order,
-whose R37 keeps the power on, and say so in the report.
+whose R37 keeps the power on. That board also has C40, which the timed order
+leaves out. Say both in the report.
 
 EN 301 489-1 applies its conducted emission tests to mains ports and to DC
 ports with long cables. This board has neither, as long as the sensor cable and

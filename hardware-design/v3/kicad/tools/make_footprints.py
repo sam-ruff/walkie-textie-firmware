@@ -13,6 +13,8 @@ Usage: make_footprints.py new.pretty kicad_footprints_dir
   than the drawing's at the end nearer the board edge (design.PLUG_LEGS).
 - U.FL test connector: KiCad's footprint, marked as allowed to bridge its own
   solder mask opening so DRC does not report the library part itself.
+- SOD-123F diode: KiCad's footprint without the diode symbol it draws on the
+  fabrication layer, which would cover the designator on the assembly drawing.
 - Module and antenna footprints: thermal spokes set square to the pads. The
   module also gets corner marks and a dot at pad 1 on the silkscreen.
 - Antenna tuning line: one copper-only pad in the shape of the printed line.
@@ -44,6 +46,7 @@ PLUG = {
 PLUG_MASK_MARGIN = 0.025   # mm of solder mask opening beyond each contact pad: leaves a 0.18 mm dam between them
 EDGE_KEEP = 0.25           # mm of bare board between the edge as drawn and the nearest copper or paste
 UFL = "U.FL_Hirose_U.FL-R-SMT-1_Vertical"
+DIODE = "D_SOD-123F"
 MODULE = "Seeed_Wio-SX1262"
 TUNING_LINE = "W3000_Tuning_Line"
 
@@ -181,6 +184,20 @@ def plug():
     return fp
 
 
+def plain_outline(fp):
+    """Take off what a library footprint draws inside its fabrication outline, such as a diode's symbol.
+
+    The assembly drawing puts the designator there, and the symbol makes it unreadable.
+    """
+    lines = [item for item in fp.GraphicalItems() if item.Type() == pcbnew.PCB_SHAPE_T and item.GetLayer() == pcbnew.F_Fab]
+    ends = [point for line in lines for point in (line.GetStart(), line.GetEnd())]
+    left, right = min(point.x for point in ends), max(point.x for point in ends)
+    top, bottom = min(point.y for point in ends), max(point.y for point in ends)
+    for line in lines:
+        if not all(point.x in (left, right) or point.y in (top, bottom) for point in (line.GetStart(), line.GetEnd())):
+            fp.Remove(line)
+
+
 def mark_module(fp):
     """Corner marks round a module's outline and a dot beside pad 1, on the silkscreen, clear of its pads."""
     drawn = [item.GetBoundingBox() for item in fp.GraphicalItems() if item.Type() == pcbnew.PCB_SHAPE_T and item.GetLayer() == pcbnew.F_Fab]
@@ -219,6 +236,12 @@ def main():
     ufl.SetAllowSolderMaskBridges(True)
     io.FootprintSave(new_lib, ufl)
     print(f"wrote {UFL}")
+
+    diode = pcbnew.FootprintLoad(os.path.join(kicad_dir, "Diode_SMD.pretty"), DIODE)
+    diode.SetFPID(pcbnew.LIB_ID(design.LIB_NEW, DIODE))
+    plain_outline(diode)
+    io.FootprintSave(new_lib, diode)
+    print(f"wrote {DIODE}")
 
     for name in (MODULE, "Pulse_W3000"):
         part = pcbnew.FootprintLoad(new_lib, name)

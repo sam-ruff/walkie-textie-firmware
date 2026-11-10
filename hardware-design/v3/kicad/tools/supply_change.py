@@ -4,9 +4,13 @@ The TPS2116 disconnects both supplies before it connects the new one. For
 that time the capacitors on its output feed the converter alone, and the
 converter takes the same power whatever its input voltage. The mux passes the
 higher of its inputs, so the change comes where the USB voltage crosses the
-battery's. The output starts the break at what the battery gives it under
-load: the voltage at the battery connector less the drop in the MOSFET, the
-mux's own switch and the tracks between the connector and the capacitors.
+battery's. When USB arrives, the output starts the break at what the battery
+gives it under load: the voltage at the battery connector less the drop in
+the MOSFET, the mux's own switch and the tracks between the connector and
+the capacitors. When USB leaves, the output follows VBUS down until the mux
+lets go of it, which may be some way under the battery's voltage: the
+datasheet states no hysteresis, but it specifies its supply currents with the
+battery input 0.2 V above the other, and that is taken as the figure.
 
 Nothing here is measured. The datasheet gives the break as a typical figure
 only, at three voltages, so the worst case takes it twice as long as the
@@ -36,6 +40,9 @@ RAIL_VOLTS = 3.3
 # Between the battery connector and those capacitors, in ohms: the MOSFET at 1.8 V of gate drive and the
 # mux's switch at 1.8 V, each at its datasheet's most, and about 14 mm of track taken as 20 milliohms.
 SERIES_OHMS = 0.059 + 0.066 + 0.020
+# How far under the battery's voltage the mux may let its output fall before it leaves USB for the
+# battery: the margin at which the TPS2116 datasheet specifies the battery input's supply current.
+UNPLUG_SAG = 0.2
 
 
 def watts(amps):
@@ -66,8 +73,13 @@ def typical(connector_volts, load_watts, marked):
 
 
 def worst(connector_volts, load_watts, marked, breaks=1):
-    """Output voltage after `breaks` worst-case breaks in a row with nothing put back between them."""
+    """Output voltage after `breaks` worst-case breaks in a row with nothing put back between them, as USB arrives."""
     return after_break(under_load(connector_volts, load_watts), load_watts, kept(marked), BREAK_SECONDS * BREAK_ALLOWANCE * breaks)
+
+
+def worst_leaving(connector_volts, load_watts, marked):
+    """Output voltage after one worst-case break as USB leaves, from a battery whose voltage does not move under load."""
+    return after_break(connector_volts - UNPLUG_SAG, load_watts, kept(marked), BREAK_SECONDS * BREAK_ALLOWANCE)
 
 
 def least_battery(load_watts, marked, floor):

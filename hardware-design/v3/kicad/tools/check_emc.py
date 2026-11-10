@@ -17,6 +17,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import design
 import hot_plug
 import parts as parts_module
 import pcbnew
@@ -66,11 +67,9 @@ RING_LEFT = 0.05           # volts of the ring that may be left when the switch 
 BEHIND_KEEPS = 0.45
 LOW_RATED_KEEPS = 0.24
 LOW_RATED_VOLTS = 10.0
-BATTERY_MOST = 3.6         # volts: two fresh lithium AA cells, the top of the brief's battery range
-# The diode from VBUS to the mux's output: its part, and its forward voltage at 10 A, which is more than
-# the lead can deliver. Its datasheet's curve has 1.2 V there at 25 degrees, and its limit at 1 A is
-# 0.1 V over the curve.
-CLAMP = {"part": "ES1D", "volts": 1.35}
+# The diode from VBUS to the mux's output, from the ES1DL datasheet: the least it drops once it carries
+# an amp or more (its typical curve has 0.87 V at 1 A) and the surge it is rated for, once.
+CLAMP = {"part": "ES1D", "least_volts": 0.6, "surge_amps": 30.0}
 
 
 def pad_centres(board, ref):
@@ -260,15 +259,21 @@ def check_contact_again(usb, ahead, behind):
     if len(usb["clamp"]) != 1:
         return problems + [f"nothing turns that ring into the mux's output: expected one diode from {usb['output_net']} to {usb['system_net']}"]
     diode = usb["clamp"][0]
-    held = BATTERY_MOST + CLAMP["volts"]
-    print(f"  {diode['ref']} {diode['value']} turns it into the capacitors on the mux's output, which the battery holds at {BATTERY_MOST} V at the most, "
-          f"so VBUS stops at that plus the diode's {CLAMP['volts']} V: {held:.2f} V")
+    # The mux lets no current back into the battery, so the diode does not hold VBUS near the battery's
+    # voltage. It puts the capacitors on the mux's output behind the switch again, a diode's drop away:
+    # the ring is then the damped one worked out above, from a smaller step and with the diode's loss
+    # added, and it leaves VBUS at the supply's voltage. The most the lead can push through the diode is
+    # the supply over the least resistance in the way, as if the switch never limited it.
+    surge = (hot_plug.SOURCE_VOLTS - off[0] - CLAMP["least_volts"]) / (hot_plug.least_ohms() + SWITCH_OHMS)
+    print(f"  {diode['ref']} {diode['value']} puts the capacitors on the mux's output behind {switch} in that state too, a diode's drop away, "
+          f"so the ring is the damped one above: VBUS rises to the supply's voltage and stays under {again:.2f} V")
+    print(f"  the most the lead can push through {diode['ref']} is {surge:.0f} A, and it is rated for {CLAMP['surge_amps']:.0f} A once")
     if diode["value"] != CLAMP["part"]:
-        problems.append(f"{diode['ref']} is not the {CLAMP['part']} whose forward voltage this check knows")
+        problems.append(f"{diode['ref']} is not the {CLAMP['part']} whose ratings this check knows")
     if diode["nets"]["1"] != usb["system_net"]:
         problems.append(f"{diode['ref']} has its cathode on {diode['nets']['1']}, not on the mux's output")
-    if held >= SIX_VOLTS:
-        problems.append(f"{diode['ref']} lets VBUS reach {held:.2f} V with the battery selected")
+    if surge >= CLAMP["surge_amps"]:
+        problems.append(f"the lead can push {surge:.0f} A through {diode['ref']}, which is rated for {CLAMP['surge_amps']:.0f} A")
     return problems
 
 
@@ -280,7 +285,17 @@ def main():
     problems = check_converter(board)
     print_cable_ceiling()
     problems += check_shell(all_parts)
-    problems += check_usb_input(all_parts)
+    # The USB input as the default order fits it, then as any other powered order does that fits other
+    # capacitors on the mux's output.
+    default = parts_module.as_built(all_parts, design.DEFAULT_ORDER)
+    problems += check_usb_input(default)
+    for order, changes in design.ORDERS.items():
+        if order == design.DEFAULT_ORDER or not changes.get("powered", True):
+            continue
+        built = parts_module.as_built(all_parts, order)
+        if names(usb_input.describe(built)["system_caps"]) != names(usb_input.describe(default)["system_caps"]):
+            print(f"the same for the {order} order:")
+            problems += [f"order {order}: {problem}" for problem in check_usb_input(built)]
     if problems:
         print("\n".join(problems))
         raise SystemExit(f"{len(problems)} problems in the emissions and discharge bounds")

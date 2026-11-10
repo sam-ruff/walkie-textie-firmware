@@ -36,6 +36,9 @@ PLUG_ROWS = {"B": 0.85, "A": 2.40}                                              
 # "slot" is the drawing's: across the leg, along it. "longer" is what is added at the edge end.
 PLUG_LEGS = {"in": 2.30, "apart": 8.50, "slot": (0.50, 1.80), "longer": 0.20, "leg": 1.50, "leg_tolerance": 0.15}
 OUTLINE_TOLERANCE = 0.2
+PLUG_REF = "J1"
+# Copper on the inner layers stays this far from the plug's plated slots. JLCPCB asks for 0.3 mm there.
+SLOT_TO_PLANE = 0.35
 
 
 def plug_x(inward):
@@ -230,7 +233,7 @@ part("C40", "100uF", (KICAD, "Capacitor_SMD:C_1206_3216Metric"), (13.0, 23.1), 0
 # contact again would ring them past 6 V. D6 turns that ring into the capacitors on the mux's output
 # once VBUS is a diode's drop above them. It is a silicon diode: a Schottky would leak the battery
 # into VBUS. With USB selected the mux's own switch is across it and it carries nothing.
-part("D6", "ES1D", (KICAD, "Diode_SMD:D_SOD-123F"), (12.6, 25.5), 180, {"1": "SYS_OUT", "2": "VBUS"},
+part("D6", "ES1D", (LIB_NEW, "D_SOD-123F"), (12.6, 25.5), 180, {"1": "SYS_OUT", "2": "VBUS"},
      lcsc="C2923901", mpn="ES1DL", manufacturer="CJ")
 part("C26", "47uF", C0805, (18.4, 15.0), 90, {"1": "GND", "2": "+3V3"}, lcsc="C16780", mpn="CL21A476MQYNNNE", manufacturer="SAMSUNG")
 kept("R15", "R15", {"1": "FB", "2": "+3V3"}, at=(18.5, 12.8), rot=0)
@@ -318,11 +321,14 @@ REMOVED = {
 }
 
 # What each order has assembled. The first is the default population: every part not marked dnp. The
-# others differ from it by the parts named. All orders use the same Gerbers.
+# others differ from it by the parts named. All orders use the same Gerbers. An order marked as not
+# powered is never run, so the checks of the supply leave it out.
 ORDERS = {
     "node": {"about": "always on: for firmware that never signals DONE, such as the radio firmware in this repo"},
-    "timed": {"leave_out": ["R37"], "about": "the wake timer is in charge: for firmware that signals DONE"},
-    "antenna-test": {"fit": ["J3", "R31"], "leave_out": ["R30"],
+    # C40 is left out too: this is the order that powers off, the brief wants under 5 uA from the battery
+    # then, and a 100 uF capacitor may leak 3.6 uA at 3.6 V by its maker's limit.
+    "timed": {"leave_out": ["R37", "C40"], "about": "the wake timer is in charge: for firmware that signals DONE"},
+    "antenna-test": {"fit": ["J3", "R31"], "leave_out": ["R30"], "powered": False,
                      "about": "the antenna on its test connector with the radio cut off, for the VNA: never power it"},
     "bench-test": {"fit": ["J3", "R31"], "leave_out": ["L5", "L6"],
                    "about": "the radio on its test connector with the antenna cut off, for the conducted compliance tests"},

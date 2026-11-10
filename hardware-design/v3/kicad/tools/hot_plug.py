@@ -43,6 +43,11 @@ def corners(metres):
         yield SOURCE_HENRIES + metres * per_metre_h + bead, source + metres * per_metre_ohms + BEAD_OHMS
 
 
+def least_ohms():
+    """Least resistance between the supply and the board's input: plugged straight into a socket."""
+    return min(ohms for _, ohms in corners(0.0))
+
+
 def worst_peak(metres, farads):
     """Highest peak over the assumed ranges for one length of lead. `farads` is the capacitor's marked value."""
     return max(peak(SOURCE_VOLTS, henries, ohms, farads * keeps) for henries, ohms in corners(metres) for keeps in INPUT_KEEPS)

@@ -5,3 +5,9 @@
 (rule "via hole clear of pads"
 	(condition "A.Type == 'Via' && B.Type == 'Pad' && !(B.memberOfFootprint('U1') && B.Pad_Number == '41')")
 	(constraint physical_hole_clearance (min 0.2mm)))
+
+# The plug's legs stand in plated slots that pass through both planes with no land of their own there.
+# JLCPCB asks for 0.3 mm between a plated hole and inner-layer copper.
+(rule "plug slots clear of the planes"
+	(condition "A.Type == 'Pad' && A.Pad_Type == 'Through-hole' && A.memberOfFootprint('J1')")
+	(constraint hole_clearance (min 0.35mm)))

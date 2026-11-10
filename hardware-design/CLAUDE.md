@@ -101,14 +101,15 @@ what to check before ordering.
   being retired. Any finding fails the build, warnings included. Its gates are
   ERC, DRC with schematic parity, `check_routes.py` (the rules the hand
   routing is drawn to), `check_firmware.py` (reads the pins from
-  `src/main.rs` and follows each to its part), `check_jlc.py` (puts JLCPCB's
+  `src/main.rs`, follows each to its part and checks the level each output
+  starts at), `check_jlc.py` (puts JLCPCB's
   footprint for each LCSC number at the placement file's position and rotation
   and compares pads), `check_fab.py` (reads the plotted Gerbers and drill
   file and each order's BOM and placement file, and checks the outline, the
   slots for the plug's legs and that an edge at either end of its tolerance
   lets the widest leg into them, the solder paste on its pads and on the
-  lands round its legs with none on bare board, the solder mask left
-  between openings, and that every
+  lands round its legs with none on bare board, the inner planes' distance
+  from those slots, the solder mask left between openings, and that every
   part an order fits has a JLCPCB number and a placement row), `check_rf.py`
   (feed impedance, antenna land pattern, ESP32 antenna
   overhang, and the radiated power and harmonics the datasheets predict at
@@ -130,11 +131,22 @@ what to check before ordering.
   independent check of each chip's pinout.
 - Every part is placed by JLCPCB (the owner's rule of 10 November 2026: see
   "Mistakes made here"). `design.ORDERS` lists four orders that share the
-  Gerbers: `node` (the default, R37 fitted), `timed` (R37 left out),
-  `antenna-test` (J3 and R31 fitted, R30 left out) and `bench-test` (J3 and
-  R31 fitted, L5 and L6 left out). Each gets its own BOM and placement file
-  under `fab/`. A build option that would once have been a solder jumper or
-  a part swapped by hand is an order.
+  Gerbers: `node` (the default, R37 fitted), `timed` (R37 and C40 left
+  out), `antenna-test` (J3 and R31 fitted, R30 left out) and `bench-test`
+  (J3 and R31 fitted, L5 and L6 left out). Each gets its own BOM and
+  placement file under `fab/`. A build option that would once have been a
+  solder jumper or a part swapped by hand is an order. `check_values.py`
+  and `check_emc.py` run once for each order that is powered, with the
+  parts that order fits.
+- The `timed` order leaves C40 out because of what the board draws while
+  the timer has the rail off. The brief's bring-up test wants under 5 uA
+  from the battery at 25 C, and Samsung's limit for a part rated 16 V or
+  less (100 megohm microfarads) lets C40 alone leak 3.6 uA at 3.6 V.
+  Without it that order has 40 uF at the worst case where `node` has
+  90 uF. It still rides a change of supply while listening, but with LoRa
+  transmitting from a 2.0 V battery one worst-case break leaves 1.50 V as
+  USB goes in and 1.32 V as it comes out, so it may reset. Nobody has
+  measured the off-state current: do it on the first `timed` board.
 - The fitted timer resistor R20 is 68 k, which gives 887 s. The brief's
   68.4 k for 900 s is not a standard value.
 - The antenna follows "Case #2" of the two 868 MHz layouts in the Pulse
@@ -201,11 +213,14 @@ what to check before ordering.
   U14's turn-off voltage (two fresh lithium cells are 3.6 V) lets the mux
   go back to it while U14 is still on, and then only C7 and C31 are behind
   the lead. A plug that makes contact again would ring them to about 7 V.
-  D6 turns the ring into the capacitors on the mux's output, so VBUS stops
-  at the battery's voltage plus the diode's drop, under 5 V. It must stay
-  a silicon diode: a Schottky would leak the battery into VBUS, where R9
-  would drain it and D5 could hold the converter on. With USB selected
-  the mux's own switch is across D6 and it carries nothing.
+  D6 puts the capacitors on the mux's output behind U14 in that state too,
+  a diode's drop away, which damps the ring: VBUS rises to the supply's
+  voltage and the model has it under 5.6 V. The mux lets no current back
+  into the battery, so D6 does not hold VBUS at the battery's voltage: it
+  charges the mux's output up towards USB, and the mux then changes over.
+  It must stay a silicon diode: a Schottky would leak the battery into
+  VBUS, where R9 would drain it and D5 could hold the converter on. With
+  USB selected the mux's own switch is across D6 and it carries nothing.
 - The mux passes whichever of USB and the battery is the higher: U4's
   select and mode pins (4 and 5) are both on ground, the last rows of the
   truth table in the TPS2116 datasheet. Do not go back to a threshold on
@@ -223,16 +238,19 @@ what to check before ordering.
   capacitors at 60 and 50 per cent, starting from what the battery gives
   the mux's output through 145 milliohms of MOSFET, mux and track. With
   2.0 V at the battery connector and LoRa transmitting, one break leaves
-  1.76 V, and the converter stops at 1.5 V. With both radios transmitting
-  one break passes only from 2.05 V up. The datasheet states no
-  hysteresis between the two inputs. Its test conditions hold them 0.1
-  and 0.2 V apart, which may be it. A tired battery, whose voltage moves
-  more than that as the load comes on and off, can make the mux change
-  over two or three times at one crossing, and nothing says the
-  capacitors are topped up between: two breaks leave 1.56 V with LoRa
-  transmitting and three leave 1.33 V. So a change of supply on a nearly
-  flat battery can still reset the ESP32, and how often the mux changes
-  over has to be seen on a scope.
+  1.76 V as USB goes in, and the converter stops at 1.5 V. As USB comes
+  out the model lets the output fall 0.2 V under the battery before the
+  mux changes over (`UNPLUG_SAG`, an assumption), and one break then
+  leaves 1.61 V. With both radios transmitting one break passes only from
+  2.05 V up. The datasheet states no hysteresis between the two inputs.
+  Its test conditions hold them 0.1 and 0.2 V apart, which may be it. A
+  tired battery, whose voltage moves more than that as the load comes on
+  and off, can make the mux change over more than once at one crossing.
+  How often is not known, and nothing says the capacitors are topped up
+  between: two breaks in a row leave 1.56 V with LoRa transmitting and
+  three leave 1.33 V. So a change of supply on a nearly flat battery can
+  still reset the ESP32, and how often the mux changes over has to be
+  seen on a scope.
 - R36 is there because the TLV803's output is rated for 5 mA and has to
   discharge the 1 uF on EN at every reset.
 - D5 must stay a silicon diode and D4 a Schottky. A Schottky at D5 leaks from
@@ -258,7 +276,11 @@ what to check before ordering.
   proud then still lets the legs in. The drawing's general tolerance on
   where the legs sit is wider than that covers, and only built boards will
   show whether it matters. The shell stands 0.15 mm below the bottom face
-  of the 0.8 mm board and the legs about 0.8 mm.
+  of the 0.8 mm board and the legs about 0.8 mm. The slots are plated, and
+  JLCPCB asks for 0.3 mm between a plated hole and copper on an inner
+  layer. The board's general clearance let the planes come within 0.2 mm,
+  so the project carries a rule that holds them 0.35 mm off
+  (`SLOT_TO_PLANE`), and `check_fab.py` measures it on the Gerbers.
   Only A6 and A7 carry the data pair and only A5 a CC resistor. Each
   ground and VBUS contact is joined to its twin in the other row by a
   short track.
@@ -271,17 +293,19 @@ what to check before ordering.
   itself will not do: its antenna pad is not connected, and it was out of
   stock on 10 November 2026.
 - The LoRa module's RF_SW pin (pad 1) is on GPIO38 with R25, 10 k, to
-  3.3 V. The firmware never drives GPIO38, so on this board the pin is high
-  all the time, and on the Seeed kit the firmware was proved on it floats.
-  Seeed's datasheet for the module says high enables receiving and the pin
-  is low at other times, which is also what the brief has. Seeed's staff
-  say on their forum that RF_SW is the /CTRL input (pin 6) of the module's
-  antenna switch and DIO2 its CTRL input (pin 4). On a switch with those
-  pins a high level on pin 6 leaves CTRL alone in charge, which is why the
-  pull-up was chosen, but nobody has named the part. Until transmit power
-  has been measured both ways at J3 (the README has the steps), treat it
-  as open. Firmware that drives GPIO38 high to receive and low to transmit
-  and sleep settles it either way and needs no change to the board.
+  3.3 V. Since 10 November 2026 the firmware drives GPIO38: high to
+  receive, low to transmit and to idle (`rx_enable` in
+  `src/lora/driver.rs`, with host tests of the level at every change of
+  mode). That is what Seeed's datasheet for the module asks, what the
+  brief has, and what Meshtastic's build for the same Seeed kit does
+  (`SX126X_RXEN 38`). It has not run on a board. Firmware from before that
+  date leaves the pin alone: R25 then holds it high all the time on this
+  board, and on the Seeed kit it floats. Seeed's staff say on their forum
+  that RF_SW is the /CTRL input (pin 6) of the module's antenna switch and
+  DIO2 its CTRL input (pin 4). On a switch with those pins a high level on
+  pin 6 leaves CTRL alone in charge, which is why R25 pulls up, but nobody
+  has named the part. R25 stays: it keeps the receive path on until the
+  firmware takes the pin, and costs 0.33 mA while the pin is held low.
 - `v3/kicad/CE_TESTING.md` is how to run the compliance plan
   (`walkie-textie-flutter/docs/COMPLIANCE.md`) on this board.
 - V3.1 designators differ from both the brief and PCB_V3. Carried over under a
@@ -831,3 +855,18 @@ that.
 
 > When firmware leaves a pin alone, read what the part's datasheet wants on
 > that pin in every mode, and say which modes the default does not meet.
+> The firmware now drives the pin, and `check_firmware.py` follows GPIO38
+> to it.
+
+**Soil sensor: added a capacitor for hold-up and did not ask what it costs
+while the board is off.** C40, 100 uF, went on the mux's output to carry the
+converter through the mux's break. The brief wants under 5 uA from the
+battery while the timer has the rail off, and that part's datasheet allows
+3.6 uA of leakage on its own. A reviewer found it. The plug's slots had the
+same kind of gap: the project's rules passed inner planes 0.2 mm from a
+plated slot where JLCPCB asks for 0.3 mm.
+
+> A part added for one state of the board has to be checked in every other
+> state, the off state included. And a fabricator's rule that KiCad's stock
+> rules do not carry needs its own rule in the project and its own gate on
+> the Gerbers.

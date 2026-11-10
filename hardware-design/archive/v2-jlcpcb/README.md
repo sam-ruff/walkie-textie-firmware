@@ -323,4 +323,6 @@ they are worth having in front of you when the boards arrive:
   board in one orientation only.
 - There is no U.FL test point in the RF path, so tuning the pi network means
   soldering a coax pigtail to the feed.
-- RF_SW1 on the LoRa module sits on GPIO38, which the firmware never drives.
+- RF_SW1 on the LoRa module sits on GPIO38, which the firmware did not drive
+  when this board was ordered. Since 10 November 2026 it drives the pin high
+  to receive and low to transmit and to idle, as Seeed's datasheet asks.

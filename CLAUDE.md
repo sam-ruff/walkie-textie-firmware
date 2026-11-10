@@ -81,8 +81,9 @@ firmware on PCB_V3:
   USB attached the rail stays on whatever DONE does, and the firmware has no
   way to tell USB from battery power.
 - PCB_V3 fits a Vollgo SX1262S8S+T-X1, not the Wio-SX1262. It does not bring
-  out DIO2 or DIO3, has an RXE pin on GPIO38 (not driven by this firmware and
-  not pulled on PCB_V3), and its datasheet contradicts itself on TCXO versus
+  out DIO2 or DIO3, has an RXE pin on GPIO38 (not pulled on PCB_V3; the
+  firmware now drives GPIO38 high to receive, which nobody has checked
+  against that module), and its datasheet contradicts itself on TCXO versus
   crystal, so `configure_tcxo` and `configure_dio2_rf_switch` may be wrong for
   it. The review asks for the Wio module back.
 - GPIO35-GPIO37 belong to the octal PSRAM on the N8R8 module. Never use them.
@@ -102,13 +103,14 @@ For firmware it differs from PCB_V3 like this:
   soil sensor should still enable the brownout detector and a watchdog.
 - The LoRa module is the Wio-SX1262, wired as on the radio board, so
   `configure_tcxo` and `configure_dio2_rf_switch` apply unchanged.
-- The module's RF_SW pin is on GPIO38 with a 10 kohm pull-up, and this
-  firmware never drives GPIO38. High enables the module's receive path.
-  Seeed's datasheet for the module has the pin low while transmitting and
-  asleep, so on this board it is high where Seeed has it low, and on the
-  Seeed kit it floats. Whether that costs transmit power has to be measured
-  on the first board (`hardware-design/v3/kicad/README.md`). Driving
-  GPIO38 high to receive and low otherwise would settle it on both boards.
+- The module's RF_SW pin is on GPIO38 with a 10 kohm pull-up. High enables
+  the module's receive path. Since 10 November 2026 the firmware drives
+  the pin: high to receive, low to transmit and to idle, which is what
+  Seeed's datasheet for the module asks (`rx_enable` in
+  `src/lora/driver.rs`). Before that it never drove GPIO38, so the pin
+  floated on the Seeed kit and would have sat high on this board. The
+  pull-up keeps the receive path on until the firmware takes the pin. The
+  change has host tests and has not run on a board.
 - I2C stays on SDA GPIO2 and SCL GPIO1, each through 100 ohms to the
   connector, and the pin map for SPI, the LED and USB is unchanged.
   `hardware-design/v3/kicad/tools/check_firmware.py` reads the pins from

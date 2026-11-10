@@ -42,6 +42,12 @@ def fitted(all_parts, order):
     return (chosen | set(changes.get("fit", []))) - set(changes.get("leave_out", []))
 
 
+def as_built(all_parts, order):
+    """The parts as one order has them: `dnp` then says whether that order leaves a part off."""
+    on = fitted(all_parts, order)
+    return {ref: {**part, "dnp": not part["no_bom"] and ref not in on} for ref, part in all_parts.items()}
+
+
 def resolve(model):
     delivered = {c["ref"]: c for c in model["comps"]}
     out = {}

@@ -42,6 +42,7 @@ VIA_LAND_AREA = 0.5             # mm2: a via's own land on an inner layer is und
 PLUG_PASTE = 26                 # stencil openings for the plug: its 24 contacts, and one over each shell pad and the leg's land beside it
 PLUG_LEG_PASTE = 2.85           # mm2: what JLCPCB's own footprint prints over a shell pad and its leg's land
 PASTE_OFF_COPPER = 0.01         # mm2 of one stencil opening that may miss the copper under it
+PLANE_TO_HOLE = 0.3             # mm: what JLCPCB asks between a plated hole and copper on an inner layer
 PLUG_LANDS = (3.6, 5.0)         # mm: how far the plug's pads reach in from the board edge, and to each side of its centre line
 SLOT_TOLERANCE = 0.02           # mm
 MASK_DAM = 0.1                  # mm: the least solder mask JLCPCB keeps between two openings
@@ -159,6 +160,16 @@ def check_plug(fab_dir, slots):
         problems.append(f"solder paste for the plug is printed on bare board: {stray:.3f} mm2 of one opening")
     if layer(fab_dir, "B_Paste.gbp").intersects(lands):
         problems.append("solder paste on the bottom face under the plug, which has no pads there")
+
+    # The slots pass through both planes with no land there, so the planes' copper is what has to stay
+    # clear of the plated hole.
+    holes = [LineString([start, end]).buffer(width / 2) for start, end, width in slots]
+    for name in ("inner 1", "inner 2"):
+        plane = layer(fab_dir, COPPER[name])
+        gap = min(plane.distance(hole) for hole in holes)
+        print(f"plug: copper on {name} comes within {gap:.3f} mm of a slot; JLCPCB asks for {PLANE_TO_HOLE} mm round a plated hole")
+        if gap < PLANE_TO_HOLE:
+            problems.append(f"copper on {name} is {gap:.3f} mm from one of the plug's slots")
     return problems
 
 

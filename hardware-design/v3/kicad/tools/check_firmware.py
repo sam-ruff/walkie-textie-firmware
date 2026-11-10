@@ -6,7 +6,8 @@ The pin numbers are read from the firmware source (src/main.rs) and the radio
 settings from src/config.rs, so the check follows the code rather than a copy
 of it. Each pin is followed through the schematic's nets to the part it has to
 reach. The board-side conditions the firmware relies on without driving a pin
-(pull-ups, strapping, the module's switch enable) are checked as well.
+(pull-ups, strapping) are checked as well, and so is what the board does to
+the module's switch enable while no firmware drives it.
 """
 import json
 import os
@@ -18,9 +19,11 @@ import design
 import parts as parts_module
 from firmware_config import radio_settings
 from sym_pins import load_symbol, pins
+from values import ohms
 
 MCU = "U1"
 RADIO = "U11"
+RAIL_VOLTS = 3.3
 # What each firmware pin must reach: (name in main.rs, purpose, series part or None, destination pin).
 SIGNALS = [
     ("sclk", "SPI clock", "R28", (RADIO, "SCK")),
@@ -30,33 +33,35 @@ SIGNALS = [
     ("dio1", "radio interrupt", None, (RADIO, "DIO1")),
     ("nrst", "radio reset", None, (RADIO, "NRST")),
     ("busy", "radio busy", None, (RADIO, "BUSY")),
+    ("rx_enable", "radio receive enable", None, (RADIO, "RF_SW")),
     ("usb d+", "USB D+", "R2", ("J1", "D+")),
     ("usb d-", "USB D-", "R1", ("J1", "D-")),
 ]
+# The level main.rs must give each output before the radio driver takes it over. Chip select and reset
+# idle high. Seeed's datasheet for the module has RF_SW high to receive and low at all other times.
+START_LEVELS = {"nss": "High", "nrst": "High", "rx_enable": "Low"}
 # From the Wio-SX1262 datasheet: frequency range, most output power, and what DIO2 and DIO3 do inside the module.
 MODULE = {"mhz": (862.0, 930.0), "dbm": 22, "tcxo_volts": (1.7, 3.3)}
 TCXO_VOLTS = {0x00: 1.6, 0x01: 1.7, 0x02: 1.8, 0x03: 2.2, 0x04: 2.4, 0x05: 2.7, 0x06: 3.0, 0x07: 3.3}     # SX1262 SetDIO3AsTcxoCtrl
 
 
 def firmware_pins(source):
-    """{role: GPIO number} and the LED's on level, from main.rs."""
-    found = {}
+    """{role: GPIO number} and {output: the level main.rs starts it at}, from main.rs."""
+    found, levels = {}, {}
     for role, gpio in re.findall(r"let (sclk|miso|mosi) = peripherals\.GPIO(\d+)", source):
         found[role] = int(gpio)
-    for role, gpio in re.findall(r"let (nss|nrst) = Output::new\(\s*peripherals\.GPIO(\d+)", source):
-        found[role] = int(gpio)
+    outputs = "|".join(["led", *START_LEVELS])
+    for role, gpio, level in re.findall(rf"let ({outputs}) = Output::new\(\s*peripherals\.GPIO(\d+),\s*Level::(\w+)", source):
+        found[role], levels[role] = int(gpio), level
     for role, gpio in re.findall(r"let (dio1|busy) = Input::new\(\s*peripherals\.GPIO(\d+)", source):
         found[role] = int(gpio)
     usb = re.search(r"Usb::new\(\s*peripherals\.USB0,\s*peripherals\.GPIO(\d+),\s*peripherals\.GPIO(\d+)", source)
     if usb:
         found["usb d+"], found["usb d-"] = int(usb.group(1)), int(usb.group(2))
-    led = re.search(r"let led = Output::new\(\s*peripherals\.GPIO(\d+),\s*Level::(\w+)", source)
-    if led:
-        found["led"] = int(led.group(1))
-    missing = [name for name, *_ in SIGNALS if name not in found] + ([] if led else ["led"])
+    missing = [name for name in [name for name, *_ in SIGNALS] + ["led"] if name not in found]
     if missing:
         raise SystemExit(f"could not find these pins in main.rs, so this check needs updating: {missing}")
-    return found, led.group(2)
+    return found, levels
 
 
 def gpio_pads(symbols_dir):
@@ -104,7 +109,8 @@ def main():
         board = Board(parts_module.resolve(json.load(fh)))
     with open(os.path.join(firmware_dir, "main.rs")) as fh:
         source = fh.read()
-    used, led_on = firmware_pins(source)
+    used, levels = firmware_pins(source)
+    led_on = levels["led"]
     with open(os.path.join(firmware_dir, "config.rs")) as fh:
         config = fh.read()
     pad_of = gpio_pads(symbols_dir)
@@ -142,21 +148,17 @@ def main():
         if not ok:
             problems.append(text)
 
-    print("what the firmware relies on without driving a pin:")
+    print("the levels main.rs gives its outputs before the radio driver takes them:")
+    for role, level in START_LEVELS.items():
+        need(levels[role] == level, f"{role} starts {level.lower()}")
+    # Until firmware takes GPIO38, and under firmware that never does, the pull-up decides: high enables the receive path.
     switch_net = board.net(RADIO, radio_pin["RF_SW"])
-    switch_gpio = [gpio for gpio, pad in pad_of.items() if board.net(MCU, pad) == switch_net]
-    driven = any(re.search(rf"peripherals\.GPIO{gpio}\b", source) for gpio in switch_gpio)
-    need(board.joins("R25", switch_net, "+3V3") and board.fitted("R25") and len(switch_gpio) == 1,
-         f"the radio module's RF_SW pin is pulled up to +3V3 by R25 and reaches GPIO{switch_gpio[0] if switch_gpio else '?'}")
-    if driven:
-        print("      the firmware uses that pin, so what it drives there decides the module's antenna switch")
-    else:
-        # Seeed's datasheet for the module has RF_SW high to receive and low at other times. Its staff
-        # describe the pin as the /CTRL input of the module's antenna switch, with DIO2 on CTRL; on a
-        # switch of that kind a high level there leaves DIO2 alone in control. Neither is measured here.
-        print("      the firmware never drives that pin, so RF_SW is high all the time: the module's receive path is enabled,")
-        print("      and it stays high in transmit, where Seeed's datasheet has it low. See the README: this needs a")
-        print("      measurement of transmit power on the first board")
+    pulled_up = board.joins("R25", switch_net, "+3V3") and board.fitted("R25")
+    need(pulled_up, "R25 pulls the radio module's RF_SW pin up to +3V3 while nothing drives it, which enables its receive path")
+    if pulled_up:
+        print(f"      holding RF_SW low takes {RAIL_VOLTS / ohms(board.parts['R25']['value']) * 1e6:.0f} uA through R25")
+
+    print("what the firmware relies on without driving a pin:")
     need(board.net(RADIO, radio_pin["VCC"]) == "+3V3", "radio module is supplied from +3V3")
     boot = board.net(MCU, pad_of[0])
     need(board.joins("R6", boot, "+3V3") and board.joins("SW1", boot, "GND"), "GPIO0 (boot) has a pull-up and a button to ground")

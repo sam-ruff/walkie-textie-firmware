@@ -18,15 +18,12 @@ JLCPCB places every part. Nothing is left to solder when the boards arrive.
 One part, the LoRa module, has to be sent to JLCPCB first, because they do not
 stock it.
 
-Two things are worth knowing before a board exists. The power mux
+One thing is worth knowing before a board exists. The power mux
 disconnects both supplies for some microseconds each time USB is plugged in
 or pulled out with a battery fitted. On a nearly flat battery, with a radio
 transmitting, that can stop the converter, and the supervisor then resets the
-ESP32. Firmware should expect to be restarted by a change of supply. And the
-firmware never drives the LoRa module's RF_SW pin, which the board holds
-high. Seeed's datasheet wants it low while transmitting, so transmit power
-needs measuring on the first board. Both are set out under "On the first
-boards".
+ESP32. Firmware should expect to be restarted by a change of supply. The
+figures are under "On the first boards".
 
 ## What is here
 
@@ -41,7 +38,7 @@ differ in what is fitted:
 | Order | Files | What it is for |
 | --- | --- | --- |
 | node | `fab/BOM.csv`, `fab/CPL.csv` | The default. R37 holds the converter on, for firmware that never signals the wake timer, such as the radio firmware in this repo |
-| timed | `fab/timed/` | R37 left out, so the wake timer cuts the power between readings. For firmware that signals DONE |
+| timed | `fab/timed/` | R37 left out, so the wake timer cuts the power between readings, and C40 left out to keep the current low while it is off. For firmware that signals DONE |
 | antenna-test | `fab/antenna-test/` | The U.FL connector and its link fitted and the radio's link left out, for measuring the antenna on a VNA. Never power one of these |
 | bench-test | `fab/bench-test/` | The U.FL connector and its link fitted and the two antenna matching parts left out, for the conducted compliance tests |
 
@@ -89,7 +86,9 @@ download JLCPCB's library entry for it. These are the checks it ends on:
   the LoRa module to reach its pad and no more. The log lists each long line
   with its length on each layer and its vias.
 - The firmware in this repo against the board. The pin numbers are read from
-  `src/main.rs` and each is followed to the part it has to reach.
+  `src/main.rs` and each is followed to the part it has to reach, GPIO38 to
+  the LoRa module's RF_SW pin among them. The level each output starts at
+  is checked too.
 - Every part of every order has a JLCPCB part number and a row in the
   placement file. A part with neither would be left for someone to solder.
 - Every placed part against JLCPCB's own footprint for its part number, at
@@ -108,9 +107,10 @@ download JLCPCB's library entry for it. These are the checks it ends on:
 - The Gerbers and drill file themselves: one closed rectangular outline, the
   two slots for the plug's legs, a board edge at either end of its tolerance
   still letting the widest leg into them, solder paste on the plug's pads
-  and on the land round each leg with none of it on bare board, 0.1 mm or
-  more of solder mask between any two openings, no hole in a pad, the
-  antenna area clear, the ground plane in one piece.
+  and on the land round each leg with none of it on bare board, the inner
+  planes 0.3 mm or more from those slots, 0.1 mm or more of solder mask
+  between any two openings, no hole in a pad, the antenna area clear, the
+  ground plane in one piece.
 - The numbers behind the radio layout: feed impedance, antenna land pattern
   and the ESP32 antenna's overhang. Then what the datasheets predict for
   radiated power and harmonics at the power the firmware sets, against the
@@ -177,16 +177,16 @@ download JLCPCB's library entry for it. These are the checks it ends on:
   the default, which fits R37 (marked ALWAYS ON). That firmware never
   signals the power timer, which would otherwise drop the 3.3 V rail for
   50 ms every 15 minutes. A sensor whose firmware signals DONE needs the
-  timed order.
+  timed order, which leaves out R37 and C40.
 - Run `.venv/bin/python tools/jlc_stock.py fab/BOM.csv 25` for today's stock
   at JLCPCB (25 is the number of boards). On 10 November 2026 every line
   JLCPCB supplies was in stock for 25 boards. The thinnest were the timer at
-  416, the USB switch at 1177, the plug at 1242 and the antenna at 1970.
-- If the firmware is built before the boards are ordered, have it drive
-  GPIO38: high to receive, low to transmit and to sleep. That is what
-  Seeed's datasheet for the LoRa module asks of its RF_SW pin, and it
-  removes the question in the next section. The board needs no change for
-  it.
+  416, the USB switch at 1174, the plug at 1242 and the antenna at 1970.
+- Flash firmware that drives GPIO38, the LoRa module's RF_SW pin. The
+  firmware in this repo does since 10 November 2026: high to receive, low
+  to transmit and to idle, which is what Seeed's datasheet for the module
+  asks. Older firmware leaves the pin alone, and R25 then holds it high
+  all the time.
 - The antenna match (L5, L6, with L7 unfitted) starts from the values in the
   Pulse datasheet. Tune it on a VNA on the real board, in its enclosure. The
   steps are in `hardware-design/CLAUDE.md`. A couple of boards from the
@@ -200,17 +200,13 @@ download JLCPCB's library entry for it. These are the checks it ends on:
   face on the land round each slot, as JLCPCB's own footprint for the plug
   has it. Check too that the plug's shell sits against the board edge or
   just clear of it, with both legs fully in.
-- Measure the transmit power at J3, on a board from the bench-test order,
-  twice: as built, and with RF_SW held low while it transmits. Tying the
-  end of R25 nearer the LoRa module to ground through 1 kohm does that,
-  and so does driving GPIO38 low from firmware. The board holds the
-  module's RF_SW pin high through R25, because the firmware never drives
-  GPIO38. High is right for receiving. Seeed's
-  datasheet has the pin low at other times, and Seeed's staff describe it
-  as the second control input of the module's antenna switch, where a high
-  level leaves the radio's own DIO2 in charge. If the two readings agree,
-  nothing needs doing. If the first is lower, the firmware has to drive
-  GPIO38.
+- Watch the LoRa module's RF_SW pin on a scope, at the end of R25 nearer
+  the module, on a board from the bench-test order. The firmware holds it
+  high while the radio listens and low while it transmits or idles, so it
+  should drop for the length of each packet sent. That code has only run
+  in host tests. Then read the transmit power at J3 (the steps are in
+  `CE_TESTING.md`). R25 holds the pin high until the firmware takes it,
+  which costs 0.33 mA while the firmware holds it low.
 - Put a scope on C7 and on C31 and plug the board into a live socket, then
   again at the end of the longest extension lead you expect. C7 is ahead of
   the protection switch and may ring to about 10 V, which the parts there
@@ -222,25 +218,38 @@ download JLCPCB's library entry for it. These are the checks it ends on:
   battery's. It disconnects both for some microseconds as it does, and C1
   and C38 to C40 feed the converter alone. With 2.0 V at the battery
   connector and LoRa transmitting, the model's worst case for one such
-  break leaves 1.76 V on C1, and the converter stops at 1.5 V. With both
-  radios transmitting it passes only from 2.05 V up. Below that the
-  supervisor resets the ESP32, which is a clean reset, and the board
-  carries on.
+  break leaves 1.76 V on C1 as USB goes in and 1.61 V as it comes out, and
+  the converter stops at 1.5 V. With both radios transmitting it passes
+  only from 2.05 V up. Below that the supervisor resets the ESP32, which is
+  a clean reset, and the board carries on.
+- Boards from the timed order have no C40, which leaves 40 uF at the worst
+  case where the others have 90 uF. From a 2.0 V battery they ride a
+  change of supply while listening (1.79 V left going in, 1.60 V coming
+  out). With LoRa transmitting they may not: the same break leaves 1.50 V
+  going in and 1.32 V coming out. A timed sensor is awake for seconds in
+  each quarter of an hour and restarts cleanly, so that was given up for
+  the current the board draws while it is off.
+- On a board from the timed order, measure the battery current while the
+  timer has the rail off. The brief's target is under 5 uA at 25 C. C40 is
+  left out of that order because its datasheet lets it leak 3.6 uA at
+  3.6 V on its own.
 - Count how often the mux changes over at one crossing. Its datasheet gives
   no hysteresis between the two inputs and no maximum for the break, so
   both are assumptions in `tools/supply_change.py`. A tired battery, whose
   voltage moves a good deal as the load comes on and off it, could make
-  the mux change over two or three times in a row. In the same model two
-  such breaks with LoRa transmitting leave 1.56 V and three leave 1.33 V,
-  which stops the converter.
+  the mux change over more than once, and how often is not known. In the
+  same model two such breaks in a row with LoRa transmitting leave 1.56 V
+  and three leave 1.33 V, which stops the converter.
 - With 3.6 V on the battery connector and USB in, wiggle the plug and watch
   C31. A battery that high lets the mux go back to it while the protection
   switch is still on, and a plug that makes contact again would then ring
-  C31 past 6 V if D6 were not there. With D6 it should stay under 5 V.
-- TP2 makes the power-off edge by hand: touch it to 3.3 V and let go. Only
-  do that while the firmware leaves IO4 as an input, and mind the pads
-  beside it, which are at USB voltage when USB is in. Shorting TP3 to
-  ground and letting go makes the same edge with less to slip on.
+  C31 past 6 V if D6 were not there. With D6 it should rise to the
+  supply's voltage and stop there.
+- TP2 makes the power-off edge by hand: touch it to 3.3 V and let go, and
+  only while the firmware leaves IO4 as an input. Shorting TP3 to ground
+  and letting go makes the same edge. Do either through 1 kohm, because a
+  slip is easy: the pads round TP2 are ground, and the pad of R24 beside
+  TP3 is on the supply.
 - Firmware for a timed sensor has to cut power with IO4 high, then low. It
   starts about 200 ms after the rail comes up, because the reset supervisor
   waits that long. The brief's "wake within 40 ms" is now true of the rail
@@ -268,7 +277,8 @@ design for production.
 - Timer: the DONE transistor stage from the brief, with test pads. TP2 is on
   IO4 ahead of the base resistor.
 - Radio: Wio-SX1262 with its decoupling, series resistors on SPI and a pull-up
-  on the pin that enables its antenna switch.
+  on the pin that enables its antenna switch, which the firmware drives
+  from GPIO38.
 - Antenna: Pulse W3000 with a pi network, the VNA test structure, a feed over
   ground and the copper-free area and tuning line from the Pulse datasheet.
 - I2C connector moved up the edge, with ESD protection and decoupling.
@@ -280,7 +290,8 @@ design for production.
   no tongue on the board, so the outline is a plain rectangle. Its pads and
   slots are where its drawing puts them, with each slot 0.2 mm longer at
   the end nearer the edge. The contact pads are 0.27 mm wide and the paste
-  on the legs' lands is as in JLCPCB's footprint for the part.
+  on the legs' lands is as in JLCPCB's footprint for the part. The inner
+  planes stop 0.35 mm from the slots, where JLCPCB asks for 0.3 mm.
 - U14, a TPS259531 protection switch, stands between the plug and the rest
   of the board. Plugged into a supply that is already on, the lead's
   inductance rings with whatever capacitance is on the input, and the mux,
@@ -302,13 +313,15 @@ design for production.
   the output down to the threshold at every unplug. R9 is now 10 k from
   VBUS to ground, to empty C31 when USB goes. C38 and C39 (22 uF each) and
   C40 (100 uF) join C1 on the mux's output for the microseconds in which
-  it has neither supply connected.
+  it has neither supply connected. The timed order leaves C40 out.
 - D6, a silicon diode from VBUS to the mux's output, is there for one
   case. A battery over about 3.4 V, such as two fresh lithium cells, lets
   the mux go back to it while U14 is still on. Only C7 and C31 are then
   behind U14, and a plug that loses contact and makes it again would ring
-  them to about 7 V, on parts that allow 6 V. D6 turns that ring into the
-  capacitors on the mux's output, so VBUS stops near 5 V.
+  them to about 7 V, on parts that allow 6 V. D6 puts the capacitors on
+  the mux's output behind U14 in that state too, which damps the ring:
+  VBUS then rises to the supply's voltage and, in the model, no more than
+  a tenth of a volt past it.
 - R37, a 0 ohm link, takes the place of a solder jumper. Whether it is
   fitted is a matter of which order is placed.
 - One part number serves each value: the designer's 10 k, 1 k, 5.1 k and
