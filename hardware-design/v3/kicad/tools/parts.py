@@ -3,6 +3,9 @@
 design.PARTS restates only what changed for a part kept from the PCB_V3 drop;
 this fills in the rest from the import model so both builders read one answer.
 """
+import contextlib
+import io
+
 import design
 
 FIELDS = ("value", "lcsc", "mpn", "manufacturer")
@@ -46,6 +49,43 @@ def as_built(all_parts, order):
     """The parts as one order has them: `dnp` then says whether that order leaves a part off."""
     on = fitted(all_parts, order)
     return {ref: {**part, "dnp": not part["no_bom"] and ref not in on} for ref, part in all_parts.items()}
+
+
+def blocks(lines):
+    """Lines grouped into blocks: each line that is not indented, with the indented lines under it."""
+    out = []
+    for line in lines:
+        if line.startswith(" ") and out:
+            out[-1].append(line)
+        else:
+            out.append([line])
+    return out
+
+
+def for_each_order(all_parts, check):
+    """Run `check` on the parts as each powered order builds them, the default order first.
+
+    `check` takes the parts, prints what it finds and returns its problems. What it prints for the
+    default order is printed in full, and for another order only the blocks that differ. Returns every
+    problem with its order's name in front.
+    """
+    powered = [order for order, changes in design.ORDERS.items() if order != design.DEFAULT_ORDER and changes.get("powered", True)]
+    problems, default = [], None
+    for order in [design.DEFAULT_ORDER, *powered]:
+        printed = io.StringIO()
+        with contextlib.redirect_stdout(printed):
+            found = check(as_built(all_parts, order))
+        problems += [f"order {order}: {problem}" for problem in found]
+        report = blocks(printed.getvalue().splitlines())
+        if default is None:
+            default, shown = report, report
+            print(f"order {order}:")
+        else:
+            shown = [block for block in report if block not in default]
+            print(f"order {order}: the same {'but for' if shown else 'figures'}")
+        for block in shown:
+            print("\n".join(block))
+    return problems
 
 
 def resolve(model):

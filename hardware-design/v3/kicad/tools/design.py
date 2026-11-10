@@ -325,9 +325,10 @@ REMOVED = {
 # powered is never run, so the checks of the supply leave it out.
 ORDERS = {
     "node": {"about": "always on: for firmware that never signals DONE, such as the radio firmware in this repo"},
-    # C40 is left out too: this is the order that powers off, the brief wants under 5 uA from the battery
-    # then, and a 100 uF capacitor may leak 3.6 uA at 3.6 V by its maker's limit.
-    "timed": {"leave_out": ["R37", "C40"], "about": "the wake timer is in charge: for firmware that signals DONE"},
+    # Only R37 differs. The capacitors on the mux's output stay, C40 among them: they are what keeps a plug
+    # that loses contact from ringing VBUS towards the 6 V its parts allow (check_emc.py), and what they
+    # may leak while the rail is off is printed by check_values.py, to be measured on the first board.
+    "timed": {"leave_out": ["R37"], "about": "the wake timer is in charge: for firmware that signals DONE"},
     "antenna-test": {"fit": ["J3", "R31"], "leave_out": ["R30"], "powered": False,
                      "about": "the antenna on its test connector with the radio cut off, for the VNA: never power it"},
     "bench-test": {"fit": ["J3", "R31"], "leave_out": ["L5", "L6"],

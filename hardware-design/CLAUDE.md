@@ -131,22 +131,36 @@ what to check before ordering.
   independent check of each chip's pinout.
 - Every part is placed by JLCPCB (the owner's rule of 10 November 2026: see
   "Mistakes made here"). `design.ORDERS` lists four orders that share the
-  Gerbers: `node` (the default, R37 fitted), `timed` (R37 and C40 left
-  out), `antenna-test` (J3 and R31 fitted, R30 left out) and `bench-test`
-  (J3 and R31 fitted, L5 and L6 left out). Each gets its own BOM and
-  placement file under `fab/`. A build option that would once have been a
-  solder jumper or a part swapped by hand is an order. `check_values.py`
-  and `check_emc.py` run once for each order that is powered, with the
-  parts that order fits.
-- The `timed` order leaves C40 out because of what the board draws while
-  the timer has the rail off. The brief's bring-up test wants under 5 uA
-  from the battery at 25 C, and Samsung's limit for a part rated 16 V or
-  less (100 megohm microfarads) lets C40 alone leak 3.6 uA at 3.6 V.
-  Without it that order has 40 uF at the worst case where `node` has
-  90 uF. It still rides a change of supply while listening, but with LoRa
-  transmitting from a 2.0 V battery one worst-case break leaves 1.50 V as
-  USB goes in and 1.32 V as it comes out, so it may reset. Nobody has
-  measured the off-state current: do it on the first `timed` board.
+  Gerbers: `node` (the default, R37 fitted), `timed` (R37 left out),
+  `antenna-test` (J3 and R31 fitted, R30 left out) and `bench-test` (J3
+  and R31 fitted, L5 and L6 left out). Each gets its own BOM and placement
+  file under `fab/`. A build option that would once have been a solder
+  jumper or a part swapped by hand is an order. `check_values.py` and the
+  USB input part of `check_emc.py` run for every order that is powered,
+  with the parts it fits, and hold each to the same marks
+  (`parts.for_each_order`). The log has the default order in full and
+  another order's blocks only where they differ.
+- The `timed` order differs from `node` by R37 alone. For one push
+  (10 November 2026) it left C40 out as well, because the brief wants
+  under 5 uA from the battery while the timer has the rail off and
+  Samsung's limit for a part rated 16 V or less (100 megohm microfarads)
+  lets C40 leak 3.6 uA at 3.6 V. Do not do that again. Without C40 a plug
+  that makes contact again rings VBUS to 5.78 V in the model, on parts
+  whose absolute maximum is 6 V, which the margin the build now asks
+  would have stopped. And the same yardstick fails the board anyway: on
+  makers' limits the mux alone
+  may take 3.7 uA and D6 5 uA. `check_values.py` now adds the off state up
+  for an order with no R37 and prints a RISK line: 2.1 uA typical for the
+  mux, the converter, the timer and D6, and 4.1 to 6.1 uA allowed to the
+  capacitors, for which no typical figure exists. Nobody has measured it:
+  do it on the first `timed` board. If it is over and a capacitor is the
+  cause, change the part and rebuild, never just leave it off. One to
+  look at is TDK's 47 uF 25 V in the same size (C76659, 40,160 at JLCPCB
+  on 10 November 2026). TDK's site refused the download here, and a copy
+  of its datasheet reached only through a search result gave 2 megohms as
+  its least insulation resistance, which would be 1.8 uA: read TDK's own
+  sheet first. Then put the part in `tools/design.py` and rebuild, so
+  that the hold-up and the contact ring are worked out for it.
 - The fitted timer resistor R20 is 68 k, which gives 887 s. The brief's
   68.4 k for 900 s is not a standard value.
 - The antenna follows "Case #2" of the two 868 MHz layouts in the Pulse
@@ -213,11 +227,16 @@ what to check before ordering.
   U14's turn-off voltage (two fresh lithium cells are 3.6 V) lets the mux
   go back to it while U14 is still on, and then only C7 and C31 are behind
   the lead. A plug that makes contact again would ring them to about 7 V.
-  D6 puts the capacitors on the mux's output behind U14 in that state too,
-  a diode's drop away, which damps the ring: VBUS rises to the supply's
-  voltage and the model has it under 5.6 V. The mux lets no current back
-  into the battery, so D6 does not hold VBUS at the battery's voltage: it
-  charges the mux's output up towards USB, and the mux then changes over.
+  D6 passes that ring on to the capacitors on the mux's output, a diode's
+  drop below VBUS, which damps it. `hot_plug.py` steps through that state:
+  5.63 V at the worst case, against 5.58 V with USB selected. That path
+  has U14's resistance in it and not the mux's, which is why it is the
+  higher of the two. `check_emc.py` holds both 5 per cent under 6 V, and
+  under 6 V with capacitors at 35 per cent and switches at three quarters
+  of their typical resistance (5.73 and 5.70 V). The mux lets no current
+  back into the battery, so D6 does not hold VBUS at the battery's
+  voltage: it charges the mux's output up towards USB, and the mux then
+  changes over.
   It must stay a silicon diode: a Schottky would leak the battery into
   VBUS, where R9 would drain it and D5 could hold the converter on. With
   USB selected the mux's own switch is across D6 and it carries nothing.
@@ -241,8 +260,15 @@ what to check before ordering.
   1.76 V as USB goes in, and the converter stops at 1.5 V. As USB comes
   out the model lets the output fall 0.2 V under the battery before the
   mux changes over (`UNPLUG_SAG`, an assumption), and one break then
-  leaves 1.61 V. With both radios transmitting one break passes only from
-  2.05 V up. The datasheet states no hysteresis between the two inputs.
+  leaves 1.61 V. The gate asks for 10 per cent over the converter's stop
+  going in and only for the converter to keep running coming out, where
+  the figure has 7 per cent. The mux's reaction time is not in its
+  datasheet and not in the model: each 10 us of it costs another 0.05 V
+  with LoRa transmitting. With both radios transmitting one break passes
+  only from 2.05 V up going in and 2.11 V coming out. Every worst-case
+  break but one also takes the timer's supply under the 1.8 V it is
+  specified from, and a restart of the timer wakes the board and begins a
+  new interval. The datasheet states no hysteresis between the two inputs.
   Its test conditions hold them 0.1 and 0.2 V apart, which may be it. A
   tired battery, whose voltage moves more than that as the load comes on
   and off, can make the mux change over more than once at one crossing.
@@ -295,8 +321,10 @@ what to check before ordering.
 - The LoRa module's RF_SW pin (pad 1) is on GPIO38 with R25, 10 k, to
   3.3 V. Since 10 November 2026 the firmware drives GPIO38: high to
   receive, low to transmit and to idle (`rx_enable` in
-  `src/lora/driver.rs`, with host tests of the level at every change of
-  mode). That is what Seeed's datasheet for the module asks, what the
+  `src/lora/driver.rs`). Host tests check the level at every command that
+  changes the radio's mode, after a transmit that completes and one that
+  fails to start, and when the receiver or `init` fails. That is what
+  Seeed's datasheet for the module asks, what the
   brief has, and what Meshtastic's build for the same Seeed kit does
   (`SX126X_RXEN 38`). It has not run on a board. Firmware from before that
   date leaves the pin alone: R25 then holds it high all the time on this
@@ -858,15 +886,37 @@ that.
 > The firmware now drives the pin, and `check_firmware.py` follows GPIO38
 > to it.
 
-**Soil sensor: added a capacitor for hold-up and did not ask what it costs
-while the board is off.** C40, 100 uF, went on the mux's output to carry the
-converter through the mux's break. The brief wants under 5 uA from the
-battery while the timer has the rail off, and that part's datasheet allows
-3.6 uA of leakage on its own. A reviewer found it. The plug's slots had the
-same kind of gap: the project's rules passed inner planes 0.2 mm from a
-plated slot where JLCPCB asks for 0.3 mm.
+**Soil sensor: gave up margin on a hard rating to meet a soft target, on one
+part's limit.** C40, 100 uF, went on the mux's output to carry the converter
+through the mux's break. A reviewer pointed out that the brief wants under
+5 uA from the battery while the timer has the rail off and that this part's
+datasheet allows 3.6 uA of leakage on its own. So the `timed` order left C40
+out, and that was pushed. The next reviewer added up the whole node: the
+mux's limit is 3.7 uA and D6's is 5 uA, so the target fails on limits with
+or without C40. Leaving it out had meanwhile taken the contact ring on VBUS
+from 5.58 to 5.78 V, against an absolute maximum of 6 V, behind a gate that
+only failed at 6.00 V.
 
-> A part added for one state of the board has to be checked in every other
-> state, the off state included. And a fabricator's rule that KiCad's stock
-> rules do not carry needs its own rule in the project and its own gate on
-> the Gerbers.
+> Before acting on one part's limit, apply the same yardstick to every part
+> on the node and print the sum. A target for battery life is soft and an
+> absolute maximum is not: never pay for the first with the second. Give a
+> gate on a rating a margin, and a second run with harsher inputs, so that
+> a thin pass stops the build.
+
+**Soil sensor: printed a bound the check had not computed, again.** With the
+battery selected, `check_emc.py` said the ring through D6 "stays under" the
+figure for the USB-selected state, on the argument that the same capacitors
+damp it. Stepped through time it is 5.63 V against 5.58 V: that path has no
+mux resistance in it. The fix for the earlier mistake of this kind had
+replaced one unsupported sentence with another.
+
+> An argument for a bound is not the bound. Model the state, check the model
+> against a second method (`peak_from` agrees with a fine time-step run to
+> a millivolt) and print its number.
+
+**Soil sensor: passed inner planes 0.2 mm from the plug's plated slots.**
+JLCPCB asks for 0.3 mm between a plated hole and copper on an inner layer,
+and the board's general clearance is less.
+
+> A fabricator's rule that the project's rules do not carry needs its own
+> rule and its own gate on the Gerbers.

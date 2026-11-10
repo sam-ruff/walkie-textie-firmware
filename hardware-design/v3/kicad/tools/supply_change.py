@@ -10,7 +10,10 @@ the MOSFET, the mux's own switch and the tracks between the connector and
 the capacitors. When USB leaves, the output follows VBUS down until the mux
 lets go of it, which may be some way under the battery's voltage: the
 datasheet states no hysteresis, but it specifies its supply currents with the
-battery input 0.2 V above the other, and that is taken as the figure.
+battery input 0.2 V above the other, and that is taken as the figure. The
+datasheet does not say how long the mux takes to act once that point is
+passed either. The output goes on falling for that time, and `fall_rate`
+says how fast.
 
 Nothing here is measured. The datasheet gives the break as a typical figure
 only, at three voltages, so the worst case takes it twice as long as the
@@ -82,7 +85,22 @@ def worst_leaving(connector_volts, load_watts, marked):
     return after_break(connector_volts - UNPLUG_SAG, load_watts, kept(marked), BREAK_SECONDS * BREAK_ALLOWANCE)
 
 
+def before_break(load_watts, marked, floor):
+    """Voltage the output has to start one worst-case break at for `floor` volts to be left."""
+    return math.sqrt(floor ** 2 + 2 * load_watts * BREAK_SECONDS * BREAK_ALLOWANCE / kept(marked))
+
+
 def least_battery(load_watts, marked, floor):
-    """Lowest voltage at the battery connector from which one worst-case break still leaves `floor` volts."""
-    start = math.sqrt(floor ** 2 + 2 * load_watts * BREAK_SECONDS * BREAK_ALLOWANCE / kept(marked))
+    """Lowest voltage at the battery connector from which one worst-case break as USB arrives still leaves `floor` volts."""
+    start = before_break(load_watts, marked, floor)
     return start + load_watts / start * SERIES_OHMS
+
+
+def least_battery_leaving(load_watts, marked, floor):
+    """The same as USB leaves, for a battery whose voltage does not move under load."""
+    return before_break(load_watts, marked, floor) + UNPLUG_SAG
+
+
+def fall_rate(volts, load_watts, marked):
+    """Volts a second at which the output falls from `volts` while its capacitors alone feed a constant power."""
+    return load_watts / volts / kept(marked)

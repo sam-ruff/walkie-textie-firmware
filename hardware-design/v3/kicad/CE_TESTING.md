@@ -18,7 +18,7 @@ Gerbers:
 | Order | Differs from the product by | Use |
 | --- | --- | --- |
 | node (`fab/`) | Nothing. R37 holds the converter on | The radio product, and every chamber test of it |
-| timed (`fab/timed/`) | R37 left out, so the wake timer cuts the power, and C40 left out to keep the current low while it is off | The sensor product, and every chamber test of it |
+| timed (`fab/timed/`) | R37 left out, so the wake timer cuts the power | The sensor product, and every chamber test of it |
 | bench-test (`fab/bench-test/`) | J3 and R31 fitted, L5 and L6 left out: the radio is on the test connector and the antenna is cut off | The conducted tests at J3 |
 | antenna-test (`fab/antenna-test/`) | J3 and R31 fitted, R30 left out: the antenna is on the test connector and the radio is cut off | Tuning the antenna on a VNA. Never power one |
 
@@ -261,8 +261,7 @@ bench tests at J3, in the next section.
 For T6 as the soil sensor, the job is one wake, read and transmit every
 15 minutes, which gives the analyser almost nothing to hold. Run a test build
 that repeats the cycle without sleeping, on a board from the node order,
-whose R37 keeps the power on. That board also has C40, which the timed order
-leaves out. Say both in the report.
+whose R37 keeps the power on, and say so in the report.
 
 EN 301 489-1 applies its conducted emission tests to mains ports and to DC
 ports with long cables. This board has neither, as long as the sensor cable and

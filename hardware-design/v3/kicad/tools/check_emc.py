@@ -17,7 +17,6 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import design
 import hot_plug
 import parts as parts_module
 import pcbnew
@@ -67,9 +66,20 @@ RING_LEFT = 0.05           # volts of the ring that may be left when the switch 
 BEHIND_KEEPS = 0.45
 LOW_RATED_KEEPS = 0.24
 LOW_RATED_VOLTS = 10.0
-# The diode from VBUS to the mux's output, from the ES1DL datasheet: the least it drops once it carries
-# an amp or more (its typical curve has 0.87 V at 1 A) and the surge it is rated for, once.
-CLAMP = {"part": "ES1D", "least_volts": 0.6, "surge_amps": 30.0}
+# The ring behind the switch when a plug makes contact again has to stay this far under what the parts
+# there allow, at the worst case of the model's ranges.
+RING_MARGIN = 0.05
+# The same ring with less to damp it than those ranges have: the capacitors keeping a smaller share of
+# their marked value, which their maker does not publish for these parts, and the two switches at three
+# quarters of their typical resistance, since neither datasheet gives a least. It has to stay under what
+# the parts allow.
+HARSH_KEEPS = 0.35
+HARSH_LOW_RATED_KEEPS = 0.19
+HARSH_SWITCHES = 0.75
+# The diode from VBUS to the mux's output, from the ES1DL datasheet: what it drops over the currents the
+# ring puts through it (its typical curve has 0.55 V at 10 mA and 1.0 V at 3 A), the least of those once
+# it carries an amp or more, and the surge it is rated for, once.
+CLAMP = {"part": "ES1D", "volts": (0.55, 0.8, 1.0), "least_volts": 0.6, "surge_amps": 30.0}
 
 
 def pad_centres(board, ref):
@@ -223,9 +233,9 @@ def check_usb_input(all_parts):
     return problems + check_contact_again(usb, ahead, behind)
 
 
-def kept_at_usb(capacitors):
+def kept_at_usb(capacitors, keeps=BEHIND_KEEPS, low_rated_keeps=LOW_RATED_KEEPS):
     """Farads that capacitors keep of their marked value with 5 V across them, at the worst case."""
-    return sum(farads(part["value"]) * (LOW_RATED_KEEPS if rated_volts(part["mpn"]) < LOW_RATED_VOLTS else BEHIND_KEEPS)
+    return sum(farads(part["value"]) * (low_rated_keeps if rated_volts(part["mpn"]) < LOW_RATED_VOLTS else keeps)
                for part in capacitors)
 
 
@@ -235,20 +245,30 @@ def check_contact_again(usb, ahead, behind):
     The switch turns off once its input is under its threshold, so what is behind it can be no lower than
     that when contact comes back. There are two states. With USB selected, every capacitor on the mux's
     output is behind the switch and damps the ring. With the battery selected, which the mux goes back to
-    as soon as VBUS is under the battery's voltage, only the capacitors on VBUS itself are.
+    as soon as VBUS is under the battery's voltage, only the capacitors on VBUS itself are, and a diode
+    has to pass the ring on to the rest.
     """
     problems = []
     switch = usb["switch"]["ref"]
     _, off = usb_input.switch_thresholds(usb)
-    kept = kept_at_usb(ahead + behind)
+    allowed = SIX_VOLTS * (1 - RING_MARGIN)
+    everything = ahead + behind
+    kept = kept_at_usb(everything)
     again = max(hot_plug.remake_peak(metres, kept, off[0], SWITCH_OHMS + MUX_OHMS) for metres in hot_plug.LEAD_METRES)
-    print(f"the plug losing contact and making it again with {switch} on: what is behind it is at {off[0]:.2f} V or more")
-    print(f"  with USB selected, {kept * 1e6:.0f} uF at the least is behind {switch} and the highest peak there, modelled, is {again:.2f} V; "
-          f"the parts there allow {SIX_VOLTS:.0f} V")
+    less = kept_at_usb(everything, HARSH_KEEPS, HARSH_LOW_RATED_KEEPS)
+    harsh = max(hot_plug.remake_peak(metres, less, off[0], (SWITCH_OHMS + MUX_OHMS) * HARSH_SWITCHES) for metres in hot_plug.LEAD_METRES)
+    print(f"the plug losing contact and making it again with {switch} on: what is behind it is at {off[0]:.2f} V or more, "
+          f"and the parts there allow {SIX_VOLTS:.0f} V")
+    print(f"  with USB selected, {kept * 1e6:.0f} uF at the least is behind {switch} and the highest peak there, modelled, is {again:.2f} V, "
+          f"which has to be {RING_MARGIN:.0%} under what those parts allow: {allowed:.2f} V")
+    print(f"  with the capacitors keeping {HARSH_KEEPS:.0%} of their marked value, not {BEHIND_KEEPS:.0%}, and the two switches at "
+          f"{HARSH_SWITCHES:.0%} of their typical resistance, it is {harsh:.2f} V")
     print(f"  {switch} also holds its output down once its input passes {usb_input.CLAMP_FROM[0]} to {usb_input.CLAMP_FROM[2]} V, but takes "
           f"{usb_input.CLAMP_SECONDS * 1e6:.0f} us, a typical figure, to start")
-    if again >= SIX_VOLTS:
-        problems.append(f"a plug that makes contact again can ring the parts behind {switch} to {again:.2f} V")
+    if again > allowed:
+        problems.append(f"a plug that makes contact again can ring the parts behind {switch} to {again:.2f} V, less than {RING_MARGIN:.0%} under what they allow")
+    if harsh >= SIX_VOLTS:
+        problems.append(f"with less to damp it than the model's ranges, a plug that makes contact again rings the parts behind {switch} to {harsh:.2f} V")
     if max(usb_input.CLAMP_FROM[2], usb_input.CLAMP_TO[2]) >= SIX_VOLTS:
         problems.append(f"{switch} does not hold its output under what the parts behind it allow")
 
@@ -260,14 +280,29 @@ def check_contact_again(usb, ahead, behind):
         return problems + [f"nothing turns that ring into the mux's output: expected one diode from {usb['output_net']} to {usb['system_net']}"]
     diode = usb["clamp"][0]
     # The mux lets no current back into the battery, so the diode does not hold VBUS near the battery's
-    # voltage. It puts the capacitors on the mux's output behind the switch again, a diode's drop away:
-    # the ring is then the damped one worked out above, from a smaller step and with the diode's loss
-    # added, and it leaves VBUS at the supply's voltage. The most the lead can push through the diode is
-    # the supply over the least resistance in the way, as if the switch never limited it.
+    # voltage: it passes the ring on to the capacitors on the mux's output, which start at the battery's
+    # voltage, taken at its least. The few capacitors on VBUS are taken at each end of what they may keep.
+    # Once VBUS is over the battery the mux changes over to USB and joins the two nodes itself, which
+    # is the state worked out above, so the bound is the higher of the two figures.
+    small = usb_input.marked_farads(few)
+
+    def through_diode(large, switch_ohms):
+        return max(hot_plug.remake_peak_through_diode(metres, small * share, large, off[0], switch_ohms, CLAMP["volts"])
+                   for metres in hot_plug.LEAD_METRES for share in (BEHIND_KEEPS, max(hot_plug.INPUT_KEEPS)))
+
+    through = through_diode(kept_at_usb(usb["system_caps"]), SWITCH_OHMS)
+    harsh_through = through_diode(kept_at_usb(usb["system_caps"], HARSH_KEEPS, HARSH_LOW_RATED_KEEPS), SWITCH_OHMS * HARSH_SWITCHES)
+    print(f"  {diode['ref']} {diode['value']} passes that ring on to the capacitors on the mux's output, {CLAMP['volts'][0]} to {CLAMP['volts'][-1]} V "
+          f"below VBUS: the highest peak on VBUS, modelled, is then {through:.2f} V, and {harsh_through:.2f} V with the harsher figures, "
+          f"until the mux changes over to USB and the state above applies")
+    # The most the lead can push through the diode is the supply over the least resistance in the way,
+    # as if nothing else limited it.
     surge = (hot_plug.SOURCE_VOLTS - off[0] - CLAMP["least_volts"]) / (hot_plug.least_ohms() + SWITCH_OHMS)
-    print(f"  {diode['ref']} {diode['value']} puts the capacitors on the mux's output behind {switch} in that state too, a diode's drop away, "
-          f"so the ring is the damped one above: VBUS rises to the supply's voltage and stays under {again:.2f} V")
     print(f"  the most the lead can push through {diode['ref']} is {surge:.0f} A, and it is rated for {CLAMP['surge_amps']:.0f} A once")
+    if through > allowed:
+        problems.append(f"with the battery selected a plug that makes contact again can ring VBUS to {through:.2f} V, less than {RING_MARGIN:.0%} under what its parts allow")
+    if harsh_through >= SIX_VOLTS:
+        problems.append(f"with the battery selected and less to damp it than the model's ranges, a plug that makes contact again rings VBUS to {harsh_through:.2f} V")
     if diode["value"] != CLAMP["part"]:
         problems.append(f"{diode['ref']} is not the {CLAMP['part']} whose ratings this check knows")
     if diode["nets"]["1"] != usb["system_net"]:
@@ -285,17 +320,8 @@ def main():
     problems = check_converter(board)
     print_cable_ceiling()
     problems += check_shell(all_parts)
-    # The USB input as the default order fits it, then as any other powered order does that fits other
-    # capacitors on the mux's output.
-    default = parts_module.as_built(all_parts, design.DEFAULT_ORDER)
-    problems += check_usb_input(default)
-    for order, changes in design.ORDERS.items():
-        if order == design.DEFAULT_ORDER or not changes.get("powered", True):
-            continue
-        built = parts_module.as_built(all_parts, order)
-        if names(usb_input.describe(built)["system_caps"]) != names(usb_input.describe(default)["system_caps"]):
-            print(f"the same for the {order} order:")
-            problems += [f"order {order}: {problem}" for problem in check_usb_input(built)]
+    print("the USB input, for each order that is powered:")
+    problems += parts_module.for_each_order(all_parts, check_usb_input)
     if problems:
         print("\n".join(problems))
         raise SystemExit(f"{len(problems)} problems in the emissions and discharge bounds")

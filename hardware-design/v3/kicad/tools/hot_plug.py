@@ -10,6 +10,12 @@ Nothing here is measured. The ranges below are assumptions about the supply,
 the lead and what the capacitor keeps of its marked value. The protection
 diode on the plug is left out, which can only make the answer too high. The
 answer is the worst case over the ranges.
+
+The same lead and supply are used for a plug that loses contact and makes it
+again with the switch on. Then the ring is behind the switch, on whatever
+capacitance is there: all of it at once when the mux has USB selected, or a
+little of it with a diode to the rest when the mux has gone back to the
+battery.
 """
 import itertools
 import math
@@ -27,6 +33,9 @@ BEAD_OHMS = 0.04
 # Share of its marked value that the input capacitor keeps at 5 V, tolerance and temperature included:
 # 100 nF, 50 V, X7R, 0402.
 INPUT_KEEPS = (0.7, 1.1)
+# The stepped part of the model: time steps to a natural period, and the periods after which it gives up.
+STEPS = 2000
+PERIODS = 50
 
 
 def peak(volts, henries, ohms, farads):
@@ -63,6 +72,56 @@ def remake_peak(metres, farads, from_volts, switch_ohms):
     """
     step = SOURCE_VOLTS - from_volts
     return max(from_volts + peak(step, henries, ohms + switch_ohms, farads) for henries, ohms in corners(metres))
+
+
+def peak_from(henries, ohms, farads, volts, amps):
+    """Highest voltage a capacitance reaches when the lead goes on charging it from `volts` with `amps` already flowing.
+
+    The series circuit's own solution, taken at the moment the current stops. With enough resistance
+    the current never stops and the voltage only approaches the supply's.
+    """
+    decay, natural = ohms / (2 * henries), 1 / (henries * farads)
+    below, slope = volts - SOURCE_VOLTS, amps / farads
+    if decay ** 2 < natural:
+        turns = math.sqrt(natural - decay ** 2)
+        when = math.atan2(slope * turns, decay * slope + natural * below) / turns
+        over = math.exp(-decay * when) * (below * math.cos(turns * when) + (slope + decay * below) / turns * math.sin(turns * when))
+        return SOURCE_VOLTS + over
+    root = math.sqrt(decay ** 2 - natural) or decay * 1e-9
+    slow, fast = -decay + root, -decay - root
+    first, second = (slope - fast * below) / (slow - fast), (slow * below - slope) / (slow - fast)
+    # The voltage passes the supply's only if the two terms cancel at some later time.
+    if first == 0 or -second / first <= 1:
+        return SOURCE_VOLTS
+    when = math.log(-second * fast / (first * slow)) / (slow - fast)
+    return SOURCE_VOLTS + first * math.exp(slow * when) + second * math.exp(fast * when)
+
+
+def diode_peak(henries, ohms, small, large, from_volts, diode_volts):
+    """Highest voltage on a small capacitance that a diode joins to a large one, when contact comes back.
+
+    Both start at `from_volts`. The lead charges the small one alone, stepped through time, until it
+    stands `diode_volts` above the large one. From then the diode passes the current on, dropping
+    `diode_volts` whatever it carries, so the two rise together as one capacitance.
+    """
+    amps, volts = 0.0, from_volts
+    step = 2 * math.pi * math.sqrt(henries * small) / STEPS
+    for _ in range(STEPS * PERIODS):
+        amps += step * (SOURCE_VOLTS - amps * ohms - volts) / henries
+        volts += step * amps / small
+        if volts >= from_volts + diode_volts:
+            return peak_from(henries, ohms, small + large, volts, amps)
+    raise SystemExit("the capacitance on VBUS never reached the diode's drop in the time modelled: this model needs looking at")
+
+
+def remake_peak_through_diode(metres, small, large, from_volts, switch_ohms, diode_volts):
+    """Highest voltage behind the switch when contact comes back while only `small` farads are behind it.
+
+    A diode joins that to the `large` farads on the far side of the mux. `diode_volts` is the range of
+    its drop, and the answer is the worst over that range and over the lead's.
+    """
+    return max(diode_peak(henries, ohms + switch_ohms, small, large, from_volts, drop)
+               for henries, ohms in corners(metres) for drop in diode_volts)
 
 
 def worst_left(metres, seconds):

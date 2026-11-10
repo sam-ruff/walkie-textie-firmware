@@ -9,17 +9,21 @@ the worst case of the parts' tolerances and of the chip's own reference, and
 compared with what the rest of the board needs. The power mux is checked for
 the mode its pins put it in and for how far its output falls while it changes
 supply, and the reset supervisor's fixed threshold is compared with the rail.
+
+Every order that is powered is checked with the parts it fits and held to the
+same marks. The default order's figures are printed in full and another
+order's only where they differ. An order that leaves the rail to the wake
+timer also gets the sum of what the battery feeds while the rail is off.
 """
 import json
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import design
 import parts as parts_module
 import supply_change
 import usb_input
-from values import divided, farads, names, rated_volts, resistor_between, span
+from values import between, divided, farads, names, one, rated_volts, resistor_between, span
 
 # TPS631000 datasheet: feedback reference in volts (least, typical, most), and the input voltage at
 # which the converter stops, at the most.
@@ -44,7 +48,27 @@ LIMIT_MARGIN = 1.5         # the current limit is at least this many times what 
 HANDOVER_MARGIN = 1.2      # and this many times what it takes at the moment the mux hands the load to USB
 BATTERY_FLAT = 2.0         # volts at the battery connector: two AA cells at the end of their life, the least the brief runs the board from
 BATTERY_LOW = 2.4          # volts: the same cells at 1.2 V each, well into their discharge
-RIDE_MARGIN = 0.10         # one worst-case break has to leave this much over the voltage at which the converter stops
+BATTERY_FRESH = 3.6        # volts: two fresh lithium AA cells, the most the brief runs the board from
+# One worst-case break as USB arrives has to leave this much over the voltage at which the converter stops.
+# As USB leaves it only has to leave the converter running: that figure already has the mux's output an
+# assumed 0.2 V under the battery before the break starts.
+RIDE_MARGIN = 0.10
+LOADS_TO_HOLD = 2          # how many of LOADS, from the first, have to ride through a break from a flat battery
+REACTION = 10e-6           # seconds of the mux's unstated reaction time that the log prices
+# What the battery feeds while the wake timer holds the rail off: each chip's (typical, most) current in
+# amps. TPS2116 datasheet, quiescent current of the input that feeds its output: typical at 25 C, most from
+# -40 to 85 C. TPS631000 datasheet, shutdown current at 25 C. TPL5111 datasheet, supply current at 25 C.
+CONVERTER = {"part": "TPS631000DRLR", "enable": "5"}
+OFF_STATE = {"TPS2116DRLR": (1.35e-6, 3.7e-6), CONVERTER["part"]: (0.5e-6, 0.9e-6), "TPL5111DDCR": (35e-9, 50e-9)}
+# ES1DL datasheet: reverse current in amps. Typical at 25 C with a tenth of its rated voltage across it, the
+# least its figure 4 shows, and the most at 25 C with all of it. Nothing is given for the few volts here.
+CLAMP_LEAKS = (0.25e-6, 5e-6)
+# Samsung's catalogue: the least insulation resistance of a capacitor, in ohm farads, for a part rated for
+# more than 16 V and for any other. It holds some parts of the first kind to the second figure and does
+# not say which. It gives no typical figure.
+INSULATION = (500.0, 100.0)
+INSULATION_VOLTS = 16.0
+OFF_TARGET = 5e-6          # amps: the brief's target for the battery current with the power off, at 25 C
 # TPS2116 datasheet: the mux passes the higher of its inputs with these two pins low, and takes this as low.
 MUX_LOW = 0.35
 # TLV803S datasheet: falling threshold in volts (least, typical, most), the hysteresis above it, the
@@ -174,61 +198,112 @@ def check_mux(usb):
     return problems
 
 
-def check_hold_up(usb, order, loads_to_hold):
-    """How far the mux's output falls while it changes supply, for the capacitors one order fits.
+def against_stop(figures):
+    """How far each voltage is over or under the one at which the converter stops, as text."""
+    return ", ".join(f"{volts / CONVERTER_STOPS - 1:+.0%}" for volts in figures)
 
-    The first `loads_to_hold` of LOADS have to ride through one worst-case break from a flat battery.
+
+def check_hold_up(usb):
+    """How far the mux's output falls while it changes supply, for the capacitors fitted.
+
+    The first LOADS_TO_HOLD of LOADS have to ride through one worst-case break from a flat battery.
     """
     problems = []
     capacitors = usb["system_caps"]
     marked = [(farads(part["value"]), rated_volts(part["mpn"])) for part in capacitors]
     loads = [(label, supply_change.watts(amps)) for label, amps in LOADS]
-    print(f"hold-up, order {order}: {names(capacitors)}, {supply_change.kept(marked) * 1e6:.0f} uF of them left at the worst case")
-    print("  loads: " + ", ".join(label for label, _ in loads) + f"; the converter stops at {CONVERTER_STOPS:.2f} V at the most "
-          f"and the timer is specified from {TIMER['least_volts']} V")
+    arriving = [supply_change.worst(BATTERY_FLAT, power, marked) for _, power in loads]
+    leaving = [supply_change.worst_leaving(BATTERY_FLAT, power, marked) for _, power in loads]
+    print(f"hold-up: {names(capacitors)}, {supply_change.kept(marked) * 1e6:.0f} uF of them left at the worst case")
+    print("  loads: " + ", ".join(label for label, _ in loads) + f"; the converter stops at {CONVERTER_STOPS:.2f} V at the most")
     print(f"  USB arriving, {BATTERY_FLAT:.1f} V at the battery connector: the break starts at " + ", ".join(
         f"{supply_change.under_load(BATTERY_FLAT, power):.2f} V" for _, power in loads)
         + f" after {supply_change.SERIES_OHMS * 1000:.0f} milliohms of MOSFET, mux and track")
     print("    one break of the typical length, capacitors at their marked value, leaves " + ", ".join(
         f"{supply_change.typical(BATTERY_FLAT, power, marked):.2f} V" for _, power in loads))
-    print(f"    one break {supply_change.BREAK_ALLOWANCE:g} times as long at the worst case leaves " + ", ".join(
-        f"{supply_change.worst(BATTERY_FLAT, power, marked):.2f} V" for _, power in loads))
+    print(f"    one break {supply_change.BREAK_ALLOWANCE:g} times as long at the worst case leaves " + ", ".join(f"{volts:.2f} V" for volts in arriving)
+          + f": {against_stop(arriving)} against the converter's stop")
     print(f"  USB leaving, a battery that stays at {BATTERY_FLAT:.1f} V: the mux may let its output fall {supply_change.UNPLUG_SAG} V under the battery first, "
-          f"and one worst-case break then leaves " + ", ".join(f"{supply_change.worst_leaving(BATTERY_FLAT, power, marked):.2f} V" for _, power in loads))
+          f"and one worst-case break then leaves " + ", ".join(f"{volts:.2f} V" for volts in leaving) + f": {against_stop(leaving)}")
+    print(f"    that sag stands for the mux's hysteresis alone. Its datasheet does not say how long it takes to act, and each "
+          f"{REACTION * 1e6:.0f} us of that costs another " + ", ".join(
+              f"{supply_change.fall_rate(BATTERY_FLAT - supply_change.UNPLUG_SAG, power, marked) * REACTION:.2f} V" for _, power in loads))
+    print(f"  asked of the first {LOADS_TO_HOLD} loads: {RIDE_MARGIN:.0%} over the converter's stop as USB arrives, and the converter still running as it leaves")
     label, power = loads[1]
     print(f"  the mux may change over more than once at one crossing, how often is not known, and nothing says the capacitors are topped up "
           f"between: with {label}, " + " and ".join(
               f"{count} worst-case breaks in a row leave {supply_change.worst(BATTERY_FLAT, power, marked, count):.2f} V" for count in (2, 3)))
     for label, power in loads:
-        least = supply_change.least_battery(power, marked, CONVERTER_STOPS)
-        if least > BATTERY_FLAT:
-            print(f"  with {label}, one worst-case break as USB arrives can stop the converter when the connector is under {least:.2f} V; "
-                  f"the supervisor then resets the ESP32")
-    for label, power in loads[:loads_to_hold]:
-        if supply_change.worst(BATTERY_FLAT, power, marked) < CONVERTER_STOPS * (1 + RIDE_MARGIN):
-            problems.append(f"order {order}: one break as USB arrives leaves under {RIDE_MARGIN:.0%} over the converter's stop with {label} from {BATTERY_FLAT:.1f} V")
-        if supply_change.worst_leaving(BATTERY_FLAT, power, marked) < CONVERTER_STOPS:
-            problems.append(f"order {order}: one break as USB leaves can stop the converter with {label} from {BATTERY_FLAT:.1f} V")
+        least_in = supply_change.least_battery(power, marked, CONVERTER_STOPS)
+        least_out = supply_change.least_battery_leaving(power, marked, CONVERTER_STOPS)
+        if max(least_in, least_out) > BATTERY_FLAT:
+            print(f"  with {label}, one worst-case break can stop the converter when the connector is under {least_in:.2f} V as USB arrives "
+                  f"and under {least_out:.2f} V as it leaves; the supervisor then resets the ESP32")
+    timer = TIMER["least_volts"]
+    under = sum(volts < timer for volts in arriving + leaving)
+    if under:
+        print(f"  the wake timer is supplied from this node and is specified from {timer} V: {under} of those {len(arriving + leaving)} "
+              f"worst-case figures are under that. If such a dip restarts the timer, it wakes the board and begins a new interval")
+    for (label, _), into, out in list(zip(loads, arriving, leaving))[:LOADS_TO_HOLD]:
+        if into < CONVERTER_STOPS * (1 + RIDE_MARGIN):
+            problems.append(f"one break as USB arrives leaves under {RIDE_MARGIN:.0%} over the converter's stop with {label} from {BATTERY_FLAT:.1f} V")
+        if out < CONVERTER_STOPS:
+            problems.append(f"one break as USB leaves can stop the converter with {label} from {BATTERY_FLAT:.1f} V")
     label, power = loads[-1]
-    if loads_to_hold > 1 and supply_change.least_battery(power, marked, CONVERTER_STOPS) > BATTERY_LOW:
-        problems.append(f"order {order}: a change of supply can stop the converter with {label} from {BATTERY_LOW:.1f} V at the connector")
+    if supply_change.least_battery(power, marked, CONVERTER_STOPS) > BATTERY_LOW:
+        problems.append(f"a change of supply can stop the converter with {label} from {BATTERY_LOW:.1f} V at the connector")
+    return problems
+
+
+def insulation_leak(capacitors, volts, hold_all_to_least):
+    """Most that capacitors may leak in amps with `volts` across them, by their maker's insulation limit."""
+    over, others = INSULATION
+    return sum(volts * farads(part["value"]) / (over if rated_volts(part["mpn"]) > INSULATION_VOLTS and not hold_all_to_least else others)
+               for part in capacitors)
+
+
+def print_off_state(all_parts, usb):
+    """What the battery still feeds while the wake timer holds the rail off, beside the brief's target.
+
+    Only an order that leaves the converter's enable to the timer has that state. The figures are the
+    makers', and for the capacitors their limits alone, so this stops nothing: it says what to measure.
+    """
+    converter = one([part for part in all_parts.values() if part["value"] == CONVERTER["part"]], "converter")
+    system, battery = usb["system_net"], usb["mux"]["nets"][usb_input.MUX["battery"]]
+    if between(all_parts, "R", system, converter["nets"][CONVERTER["enable"]]):
+        return
+    chips = [part for part in all_parts.values() if part["value"] in OFF_STATE and not part["dnp"]]
+    diodes = usb["clamp"]
+    capacitors = between(all_parts, "C", system, "GND") + between(all_parts, "C", battery, "GND")
+    typical = sum(OFF_STATE[part["value"]][0] for part in chips) + CLAMP_LEAKS[0] * len(diodes)
+    most = sum(OFF_STATE[part["value"]][1] for part in chips) + CLAMP_LEAKS[1] * len(diodes)
+    leaks = [insulation_leak(capacitors, BATTERY_FRESH, hold_all) for hold_all in (False, True)]
+    print(f"power off: with the timer holding the rail off, a {BATTERY_FRESH} V battery still feeds {names(chips + diodes)}, "
+          f"the diode through {usb['bleed']['ref']}, and {len(capacitors)} capacitors of {usb_input.marked_farads(capacitors) * 1e6:.0f} uF")
+    print(f"  the chips and the diode: {typical * 1e6:.1f} uA typical, {most * 1e6:.1f} uA at their makers' limits, "
+          f"which for the mux is over temperature and for the diode at its full rated voltage")
+    print(f"  the capacitors, by their maker's insulation limit: {leaks[0] * 1e6:.1f} uA, or {leaks[1] * 1e6:.1f} uA if the maker holds "
+          f"the parts rated over {INSULATION_VOLTS:.0f} V to its lower figure as well. No typical figure is given")
+    total = typical + leaks[0]
+    print(f"  the chips typical and the capacitors at their limit: {total * 1e6:.1f} to {(typical + leaks[1]) * 1e6:.1f} uA; "
+          f"the brief's target is {OFF_TARGET * 1e6:.0f} uA at 25 C")
+    if total > OFF_TARGET:
+        print(f"  RISK: on the makers' figures this order can draw more than {OFF_TARGET * 1e6:.0f} uA with the power off. "
+              f"The capacitors' share is a limit with no typical figure beside it: measure it on the first board")
+
+
+def check_order(built):
+    """Every check on the parts as one order builds them. Returns the problems."""
+    usb = usb_input.describe(built)
+    problems = check_rail(built) + check_timer(built) + check_switch(usb) + check_mux(usb) + check_supervisor(built) + check_hold_up(usb)
+    print_off_state(built, usb)
     return problems
 
 
 def main():
     with open(sys.argv[1]) as fh:
         all_parts = parts_module.resolve(json.load(fh))
-    usb = usb_input.describe(parts_module.as_built(all_parts, design.DEFAULT_ORDER))
-    problems = check_rail(all_parts) + check_timer(all_parts) + check_switch(usb) + check_mux(usb) + check_supervisor(all_parts)
-    # The default order runs a radio all the time, so it has to ride through a break with LoRa transmitting.
-    # An order that fits other capacitors is checked for itself: it has to ride through one while listening.
-    problems += check_hold_up(usb, design.DEFAULT_ORDER, 2)
-    for order, changes in design.ORDERS.items():
-        if order == design.DEFAULT_ORDER or not changes.get("powered", True):
-            continue
-        built = usb_input.describe(parts_module.as_built(all_parts, order))
-        if names(built["system_caps"]) != names(usb["system_caps"]):
-            problems += check_hold_up(built, order, 1)
+    problems = parts_module.for_each_order(all_parts, check_order)
     if problems:
         print("\n".join(problems))
         raise SystemExit(f"{len(problems)} problems with the values that set the rails, the thresholds and the timer")

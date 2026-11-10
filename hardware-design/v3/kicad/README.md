@@ -38,7 +38,7 @@ differ in what is fitted:
 | Order | Files | What it is for |
 | --- | --- | --- |
 | node | `fab/BOM.csv`, `fab/CPL.csv` | The default. R37 holds the converter on, for firmware that never signals the wake timer, such as the radio firmware in this repo |
-| timed | `fab/timed/` | R37 left out, so the wake timer cuts the power between readings, and C40 left out to keep the current low while it is off. For firmware that signals DONE |
+| timed | `fab/timed/` | R37 left out, so the wake timer cuts the power between readings. For firmware that signals DONE |
 | antenna-test | `fab/antenna-test/` | The U.FL connector and its link fitted and the radio's link left out, for measuring the antenna on a VNA. Never power one of these |
 | bench-test | `fab/bench-test/` | The U.FL connector and its link fitted and the two antenna matching parts left out, for the conducted compliance tests |
 
@@ -103,7 +103,14 @@ download JLCPCB's library entry for it. These are the checks it ends on:
   threshold is checked against that rail.
 - The power mux: that its pins put it in the mode that passes the higher
   supply, and how far its output falls while it changes from one supply to
-  the other (`tools/supply_change.py`).
+  the other (`tools/supply_change.py`). These two checks and the USB input
+  check below run for every order that is powered, with the parts it fits,
+  and hold each to the same marks.
+- For an order that leaves the rail to the wake timer, what the battery
+  still feeds while the rail is off, added up from the makers' figures. If
+  that is over the brief's 5 uA the log prints a RISK line. It does not
+  stop the build, because the capacitors' share is a limit with no typical
+  figure and only a measurement settles it.
 - The Gerbers and drill file themselves: one closed rectangular outline, the
   two slots for the plug's legs, a board edge at either end of its tolerance
   still letting the widest leg into them, solder paste on the plug's pads
@@ -115,9 +122,8 @@ download JLCPCB's library entry for it. These are the checks it ends on:
   and the ESP32 antenna's overhang. Then what the datasheets predict for
   radiated power and harmonics at the power the firmware sets, against the
   legal limits. It also models the firmware's LoRa signal against the
-  sub-band it uses and prints a RISK line when the fit is poor. That line is
-  the one thing here that does not stop the build, because the remedy is a
-  firmware setting.
+  sub-band it uses and prints a RISK line when the fit is poor. That line
+  does not stop the build either, because the remedy is a firmware setting.
 - What the layout decides about emissions and static discharge: the area of
   the converter's switching loops and the field they could radiate, and the
   voltage a discharge to the plug's shell puts on the capacitor behind it.
@@ -125,7 +131,9 @@ download JLCPCB's library entry for it. These are the checks it ends on:
   into a live supply, and checks that only parts rated for it are ahead of
   the protection switch. It models a plug that loses contact and makes it
   again as well, when the switch is on and the ring reaches what is behind
-  it, with the mux on USB and with the mux gone back to the battery.
+  it, with the mux on USB and with the mux gone back to the battery. That
+  ring has to stay 5 per cent under the 6 V those parts allow, and under
+  6 V with less to damp it than the model assumes.
 - The battery and sensor connectors: pin 1 where JST's drawing puts it, and
   a silkscreen legend that names the net on each pad.
 
@@ -177,7 +185,7 @@ download JLCPCB's library entry for it. These are the checks it ends on:
   the default, which fits R37 (marked ALWAYS ON). That firmware never
   signals the power timer, which would otherwise drop the 3.3 V rail for
   50 ms every 15 minutes. A sensor whose firmware signals DONE needs the
-  timed order, which leaves out R37 and C40.
+  timed order, which leaves R37 out and changes nothing else.
 - Run `.venv/bin/python tools/jlc_stock.py fab/BOM.csv 25` for today's stock
   at JLCPCB (25 is the number of boards). On 10 November 2026 every line
   JLCPCB supplies was in stock for 25 boards. The thinnest were the timer at
@@ -202,9 +210,11 @@ download JLCPCB's library entry for it. These are the checks it ends on:
   just clear of it, with both legs fully in.
 - Watch the LoRa module's RF_SW pin on a scope, at the end of R25 nearer
   the module, on a board from the bench-test order. The firmware holds it
-  high while the radio listens and low while it transmits or idles, so it
-  should drop for the length of each packet sent. That code has only run
-  in host tests. Then read the transmit power at J3 (the steps are in
+  high while the radio listens and low while it transmits or idles, so in
+  normal use it should drop for each packet sent and come back when the
+  radio listens again. In the test firmware it stays low from `c`, `m` or
+  `p` until `s`, between test packets included. That code has only run in
+  host tests. Then read the transmit power at J3 (the steps are in
   `CE_TESTING.md`). R25 holds the pin high until the firmware takes it,
   which costs 0.33 mA while the firmware holds it low.
 - Put a scope on C7 and on C31 and plug the board into a live socket, then
@@ -219,20 +229,28 @@ download JLCPCB's library entry for it. These are the checks it ends on:
   and C38 to C40 feed the converter alone. With 2.0 V at the battery
   connector and LoRa transmitting, the model's worst case for one such
   break leaves 1.76 V on C1 as USB goes in and 1.61 V as it comes out, and
-  the converter stops at 1.5 V. With both radios transmitting it passes
-  only from 2.05 V up. Below that the supervisor resets the ESP32, which is
-  a clean reset, and the board carries on.
-- Boards from the timed order have no C40, which leaves 40 uF at the worst
-  case where the others have 90 uF. From a 2.0 V battery they ride a
-  change of supply while listening (1.79 V left going in, 1.60 V coming
-  out). With LoRa transmitting they may not: the same break leaves 1.50 V
-  going in and 1.32 V coming out. A timed sensor is awake for seconds in
-  each quarter of an hour and restarts cleanly, so that was given up for
-  the current the board draws while it is off.
+  the converter stops at 1.5 V. The build insists on 10 per cent over that
+  stop as USB goes in. As it comes out the figure has 7 per cent, and it
+  rests on two things the mux's datasheet does not give: it takes the
+  output 0.2 V under the battery before the mux lets go, and it leaves out
+  the time the mux then takes to act, which costs another 0.05 V for every
+  10 microseconds. So expect a reset there on a nearly flat battery. With
+  both radios transmitting one break passes only from 2.05 V up going in
+  and 2.11 V coming out. A reset by the supervisor is a clean one, and the
+  board carries on.
 - On a board from the timed order, measure the battery current while the
-  timer has the rail off. The brief's target is under 5 uA at 25 C. C40 is
-  left out of that order because its datasheet lets it leak 3.6 uA at
-  3.6 V on its own.
+  timer has the rail off. The brief's target is under 5 uA at 25 C, and on
+  the makers' figures it may not be met. The mux, the converter, the timer
+  and D6 take 2.1 uA between them typically. The capacitors on the mux's
+  output are allowed 4.1 to 6.1 uA by their maker's limit, which gives no
+  typical figure, and C40 is most of that. If the reading is over, find
+  the part before changing anything. Do not cure it by leaving capacitors
+  off the mux's output: they are what keeps VBUS under 6 V when a plug
+  loses contact, and the build stops if that margin goes.
+- On the same board, watch the timer's DRVN pin while USB goes in and
+  comes out at 2.0 V. The mux's break takes the timer's supply under the
+  1.8 V it is specified from. If that restarts the timer, it wakes the
+  board and begins a new interval, which does no harm but should be seen.
 - Count how often the mux changes over at one crossing. Its datasheet gives
   no hysteresis between the two inputs and no maximum for the break, so
   both are assumptions in `tools/supply_change.py`. A tired battery, whose
@@ -243,8 +261,10 @@ download JLCPCB's library entry for it. These are the checks it ends on:
 - With 3.6 V on the battery connector and USB in, wiggle the plug and watch
   C31. A battery that high lets the mux go back to it while the protection
   switch is still on, and a plug that makes contact again would then ring
-  C31 past 6 V if D6 were not there. With D6 it should rise to the
-  supply's voltage and stop there.
+  C31 past 6 V if D6 were not there. With D6 it should pass the supply's
+  voltage by a few tenths of a volt at most. Do it again with a weaker
+  battery, so that the mux has USB selected, and on the longest lead you
+  have: in the model a 5.5 V supply gives 5.63 and 5.58 V.
 - TP2 makes the power-off edge by hand: touch it to 3.3 V and let go, and
   only while the firmware leaves IO4 as an input. Shorting TP3 to ground
   and letting go makes the same edge. Do either through 1 kohm, because a
@@ -313,15 +333,19 @@ design for production.
   the output down to the threshold at every unplug. R9 is now 10 k from
   VBUS to ground, to empty C31 when USB goes. C38 and C39 (22 uF each) and
   C40 (100 uF) join C1 on the mux's output for the microseconds in which
-  it has neither supply connected. The timed order leaves C40 out.
+  it has neither supply connected.
 - D6, a silicon diode from VBUS to the mux's output, is there for one
   case. A battery over about 3.4 V, such as two fresh lithium cells, lets
   the mux go back to it while U14 is still on. Only C7 and C31 are then
   behind U14, and a plug that loses contact and makes it again would ring
-  them to about 7 V, on parts that allow 6 V. D6 puts the capacitors on
-  the mux's output behind U14 in that state too, which damps the ring:
-  VBUS then rises to the supply's voltage and, in the model, no more than
-  a tenth of a volt past it.
+  them to about 7 V, on parts that allow 6 V. D6 passes that ring on to
+  the capacitors on the mux's output, which damp it. In the model VBUS
+  then peaks at 5.63 V on a 5.5 V supply. With USB selected, where the mux
+  itself joins those capacitors to VBUS, the same event peaks at 5.58 V.
+  The build holds both 5 per cent under 6 V. With less to damp the ring
+  than the model assumes (capacitors keeping 35 per cent of their marked
+  value, switches at three quarters of their typical resistance) the two
+  figures are 5.73 and 5.70 V.
 - R37, a 0 ohm link, takes the place of a solder jumper. Whether it is
   fitted is a matter of which order is placed.
 - One part number serves each value: the designer's 10 k, 1 k, 5.1 k and
@@ -364,4 +388,5 @@ The test pads TP2 and TP3 carry what is on them: IO4 and DONE.
 One thing differs from the brief and is kept as the designer had it. The
 wake timer is supplied from the mux's output, where the brief has it on the
 battery. It then runs from USB as well, and it sees the mux's break: a dip
-under the 1.8 V it is specified from can restart its interval.
+under the 1.8 V it is specified from can restart it, which wakes the board
+at once and begins a new interval.
