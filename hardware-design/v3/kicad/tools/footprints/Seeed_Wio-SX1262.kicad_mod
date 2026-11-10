@@ -1,0 +1,127 @@
+(footprint "Seeed_Wio-SX1262"
+  (version 20241229)
+  (generator "kicad-mcp")
+  (generator_version "9.0")
+  (layer "F.Cu")
+  (descr "Seeed Wio-SX1262 LoRa module, 11.6 x 11.0 mm, 12 castellated pads. Land pattern from the module datasheet, Figure 9 (pads 0.6 x 2.2 mm centred on the module edge, 1.27 mm pitch)")
+  (tags "LoRa SX1262 Seeed Wio module")
+
+  (property "Reference" "REF**" (at 0 -1 0)
+    (layer "F.SilkS")
+    (uuid "ecf7600f-581c-42ca-8b55-112ddb32cea9")
+    (effects (font (size 1 1) (thickness 0.15)))
+  )
+  (property "Value" "Seeed_Wio-SX1262" (at 0 1 0)
+    (layer "F.Fab")
+    (uuid "fbfcf66f-1466-4e44-8f62-93a094d38d08")
+    (effects (font (size 1 1) (thickness 0.15)))
+  )
+  (property "Datasheet" "" (at 0 0 0)
+    (layer "F.Fab")
+    (uuid "5aefaf74-4e11-4e17-af62-2a1aa5bae73d")
+    (effects (font (size 1 1) (thickness 0.15)))
+  )
+
+  (fp_rect
+    (start -6.05 -6.85)
+    (end 6.05 6.85)
+    (stroke (width 0.05) (type default))
+    (fill none)
+    (layer "F.CrtYd")
+    (uuid "6f12b002-8bd3-4554-9ec5-456775685cfe")
+  )
+
+  (fp_rect
+    (start -5.8 -5.5)
+    (end 5.8 5.5)
+    (stroke (width 0.1) (type default))
+    (fill none)
+    (layer "F.Fab")
+    (uuid "c64d5893-f179-427f-b719-56eb5abada1f")
+  )
+
+  (pad "1" smd rect
+    (at -4.47 5.5)
+    (size 0.6 2.2)
+    (layers "F.Cu" "F.Paste" "F.Mask")
+    (uuid "ea11dd72-870a-459e-9bea-2ee01982eb30")
+  )
+
+  (pad "2" smd rect
+    (at -3.2 5.5)
+    (size 0.6 2.2)
+    (layers "F.Cu" "F.Paste" "F.Mask")
+    (uuid "f8317564-b9d5-4582-a227-ecb34641f94b")
+  )
+
+  (pad "3" smd rect
+    (at -1.93 5.5)
+    (size 0.6 2.2)
+    (layers "F.Cu" "F.Paste" "F.Mask")
+    (uuid "5b04f33f-5b9a-449f-b800-daac7eb8c40f")
+  )
+
+  (pad "4" smd rect
+    (at -0.66 5.5)
+    (size 0.6 2.2)
+    (layers "F.Cu" "F.Paste" "F.Mask")
+    (uuid "fd912dcd-f256-4179-96b7-cebbe01a85ff")
+  )
+
+  (pad "5" smd rect
+    (at 0.61 5.5)
+    (size 0.6 2.2)
+    (layers "F.Cu" "F.Paste" "F.Mask")
+    (uuid "814537f9-4fb8-45b9-95a2-8eb6589cd735")
+  )
+
+  (pad "6" smd rect
+    (at 1.88 5.5)
+    (size 0.6 2.2)
+    (layers "F.Cu" "F.Paste" "F.Mask")
+    (uuid "3d648d93-f1f4-4043-a722-69bbd3ae7422")
+  )
+
+  (pad "7" smd rect
+    (at 3.15 5.5)
+    (size 0.6 2.2)
+    (layers "F.Cu" "F.Paste" "F.Mask")
+    (uuid "4ebc7ffc-ab4d-4a47-aa51-48bcf7276a38")
+  )
+
+  (pad "8" smd rect
+    (at 4.42 5.5)
+    (size 0.6 2.2)
+    (layers "F.Cu" "F.Paste" "F.Mask")
+    (uuid "18a7e897-5ded-4886-981a-9bf413be6bcd")
+  )
+
+  (pad "9" smd rect
+    (at 0.61 -5.5)
+    (size 0.6 2.2)
+    (layers "F.Cu" "F.Paste" "F.Mask")
+    (uuid "d7164753-6da8-4757-a100-913ff10a0210")
+  )
+
+  (pad "10" smd rect
+    (at -0.66 -5.5)
+    (size 0.6 2.2)
+    (layers "F.Cu" "F.Paste" "F.Mask")
+    (uuid "dd044758-6433-4ce8-bc67-6f47a5f71d84")
+  )
+
+  (pad "11" smd rect
+    (at -1.93 -5.5)
+    (size 0.6 2.2)
+    (layers "F.Cu" "F.Paste" "F.Mask")
+    (uuid "b5e2c8f8-4000-4a44-bd64-14997c8d2f4a")
+  )
+
+  (pad "12" smd rect
+    (at -3.2 -5.5)
+    (size 0.6 2.2)
+    (layers "F.Cu" "F.Paste" "F.Mask")
+    (uuid "dd17e76d-ccab-4cf9-b7c2-a5d5af94259a")
+  )
+
+)

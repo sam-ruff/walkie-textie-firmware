@@ -1,0 +1,7 @@
+# On top of KiCad's own pcbnew module, which comes with KiCad and not from PyPI.
+contourpy
+numpy
+pillow
+shapely
+# render_board.py only
+cairosvg

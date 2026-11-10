@@ -1,0 +1,76 @@
+(footprint "W3000_Tuning_Line"
+	(version 20260206)
+	(generator "pcbnew")
+	(generator_version "10.0")
+	(layer "F.Cu")
+	(descr "Printed tuning line for the Pulse W3000 at 868 MHz, as in the datasheet's reference layout. Copper only.")
+	(property "Reference" "REF**"
+		(at 2 -2 0)
+		(layer "F.Fab")
+		(uuid "8865665a-960b-4ec4-b314-76457732bfb9")
+		(effects
+			(font
+				(size 0.4 0.4)
+				(thickness 0.06)
+			)
+		)
+	)
+	(property "Value" "W3000_Tuning_Line"
+		(at 2 -2 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "7edf40a2-7972-4310-9b4b-af5f54560995")
+		(effects
+			(font
+				(size 0.4 0.4)
+				(thickness 0.06)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "04a955b6-5d49-49a3-955b-9d6261977992")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "fa9e5bd1-2f5a-47bb-ba07-fb114c2a0d6c")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(attr smd exclude_from_pos_files exclude_from_bom allow_missing_courtyard)
+	(duplicate_pad_numbers_are_jumpers no)
+	(pad "1" smd custom
+		(at 0 0)
+		(size 0.3 0.3)
+		(layers "F.Cu")
+		(thermal_bridge_angle 45)
+		(options
+			(clearance outline)
+			(anchor rect)
+		)
+		(primitives
+			(gr_poly
+				(pts
+					(xy -0.149999 0.75) (xy 4.335 0.75) (xy 4.335 -4.5) (xy -4.064999 -4.5) (xy -4.064999 -2.8) (xy 3.135 -2.8)
+					(xy 3.135 -0.749999) (xy -0.149999 -0.749999)
+				)
+				(width 0)
+				(fill yes)
+			)
+		)
+		(uuid "8f7bdad9-8373-4cd5-b824-0e9633f48d25")
+	)
+	(embedded_fonts no)
+)

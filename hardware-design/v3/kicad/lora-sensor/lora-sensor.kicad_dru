@@ -1,0 +1,7 @@
+(version 1)
+
+# A via's hole stays clear of every pad, same net or not, so solder is not drawn
+# down the hole. The ESP32 module's ground paddle is the exception: its vias are wanted.
+(rule "via hole clear of pads"
+	(condition "A.Type == 'Via' && B.Type == 'Pad' && !(B.memberOfFootprint('U1') && B.Pad_Number == '41')")
+	(constraint physical_hole_clearance (min 0.2mm)))

@@ -1,0 +1,1152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LoRa Soil Sensor Node — Hardware Handover</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&amp;display=swap">
+
+<style>
+  :root {
+    --paper:   #EDEFF1;
+    --sheet:   #FCFCFB;
+    --panel:   #F4F5F6;
+    --ink:     #14181D;
+    --ink-2:   #4B535C;
+    --ink-3:   #7D868F;
+    --rule:    #D8DDE2;
+    --rule-2:  #BFC7CE;
+    --rf:      #A8481A;
+    --rf-soft: #F3E4D8;
+    --b:       #1C5793;
+    --b-soft:  #DDE7F2;
+    --ok:      #2C6E51;
+    --shadow:  0 1px 2px rgba(20,24,29,.08), 0 12px 32px rgba(20,24,29,.10);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:   #0B0D10;
+      --sheet:   #15191E;
+      --panel:   #1C2128;
+      --ink:     #E7EBEF;
+      --ink-2:   #A9B3BC;
+      --ink-3:   #79838D;
+      --rule:    #2B323A;
+      --rule-2:  #3C444D;
+      --rf:      #E29A63;
+      --rf-soft: #34241A;
+      --b:       #7FB0E4;
+      --b-soft:  #16232F;
+      --ok:      #6ABF95;
+      --shadow:  0 1px 2px rgba(0,0,0,.5), 0 16px 40px rgba(0,0,0,.45);
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper:   #0B0D10;
+    --sheet:   #15191E;
+    --panel:   #1C2128;
+    --ink:     #E7EBEF;
+    --ink-2:   #A9B3BC;
+    --ink-3:   #79838D;
+    --rule:    #2B323A;
+    --rule-2:  #3C444D;
+    --rf:      #E29A63;
+    --rf-soft: #34241A;
+    --b:       #7FB0E4;
+    --b-soft:  #16232F;
+    --ok:      #6ABF95;
+    --shadow:  0 1px 2px rgba(0,0,0,.5), 0 16px 40px rgba(0,0,0,.45);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Source Serif 4", Georgia, "Times New Roman", serif;
+    font-size: 9.5pt;
+    line-height: 1.45;
+    margin: 0;
+    padding: 24px 16px 48px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 24px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .sheet {
+    background: var(--sheet);
+    width: 210mm;
+    max-width: 100%;
+    min-height: 297mm;
+    padding: 13mm 13mm 10mm;
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    gap: 4.4mm;
+    position: relative;
+  }
+
+  /* ---- the ask -------------------------------------------------------- */
+
+  .ask {
+    border: 1px solid var(--rule-2);
+    border-left: 3px solid var(--rf);
+    background: var(--panel);
+    padding: 3mm 4mm 3.2mm;
+  }
+  .ask-label {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 6.8pt; letter-spacing: .16em; text-transform: uppercase;
+    color: var(--rf); margin: 0 0 1mm;
+  }
+  .ask-lead {
+    font-family: "Archivo", "Helvetica Neue", Arial, sans-serif;
+    font-size: 12.5pt; font-weight: 600; line-height: 1.2;
+    color: var(--ink); margin: 0 0 2.4mm;
+  }
+  .ask-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4mm; }
+  .ask-item { border-top: 2px solid var(--ink-3); padding-top: 1.4mm; }
+  .ask-item--rf { border-top-color: var(--rf); }
+  .ask-item--b { border-top-color: var(--b); }
+  .ask-item h3 { font-size: 9pt; margin: 0 0 .6mm; }
+  .ask-item--rf h3 { color: var(--rf); }
+  .ask-item--b h3 { color: var(--b); }
+  .ask-item p { font-size: 8.4pt; color: var(--ink-2); margin: 0; }
+  .ask-foot {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 6.9pt; line-height: 1.45; color: var(--ink-3);
+    margin: 2.4mm 0 0;
+    border-top: .5px solid var(--rule-2); padding-top: 1.4mm;
+  }
+
+  /* ---- title block ---------------------------------------------------- */
+
+  .titleblock {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 10mm;
+    border-bottom: 1.6px solid var(--ink);
+    padding-bottom: 2.6mm;
+  }
+  .eyebrow {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 7pt;
+    font-weight: 500;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--rf);
+    margin: 0 0 1.2mm;
+  }
+  h1 {
+    font-family: "Archivo", "Helvetica Neue", Arial, sans-serif;
+    font-size: 21pt;
+    font-weight: 700;
+    letter-spacing: -.022em;
+    line-height: 1.02;
+    margin: 0;
+    text-wrap: balance;
+  }
+  .tb-meta {
+    display: grid;
+    grid-template-columns: auto auto;
+    gap: .6mm 4mm;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 7.2pt;
+    color: var(--ink-2);
+    text-align: right;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    margin: 0;
+  }
+  .tb-meta dt { color: var(--ink-3); letter-spacing: .06em; text-transform: uppercase; font-size: 6.6pt; }
+  .tb-meta dd { margin: 0; color: var(--ink); }
+
+  /* ---- generic type --------------------------------------------------- */
+
+  h2 {
+    font-family: "Archivo", "Helvetica Neue", Arial, sans-serif;
+    font-size: 8.4pt;
+    font-weight: 600;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--ink);
+    margin: 0 0 2mm;
+    padding-bottom: 1mm;
+    border-bottom: 1px solid var(--rule-2);
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 4mm;
+  }
+  h2 .h2-note {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 6.8pt;
+    font-weight: 400;
+    letter-spacing: .04em;
+    text-transform: none;
+    color: var(--ink-3);
+  }
+  h3 {
+    font-family: "Archivo", "Helvetica Neue", Arial, sans-serif;
+    font-size: 9pt;
+    font-weight: 600;
+    letter-spacing: -.005em;
+    margin: 0 0 1.2mm;
+  }
+  p { margin: 0 0 2mm; }
+  p:last-child { margin-bottom: 0; }
+  .lede { font-size: 10pt; line-height: 1.5; color: var(--ink-2); }
+  .lede strong { color: var(--ink); font-weight: 600; }
+  code, .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: .88em; }
+  a { color: var(--b); text-decoration: none; border-bottom: .5px solid color-mix(in srgb, var(--b) 42%, transparent); }
+  a:hover { border-bottom-color: var(--b); }
+  a:focus-visible { outline: 2px solid var(--b); outline-offset: 2px; }
+
+  /* ---- figures -------------------------------------------------------- */
+
+  figure { margin: 0; }
+  figcaption {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 6.9pt;
+    line-height: 1.45;
+    color: var(--ink-3);
+    margin-top: 1.8mm;
+  }
+  figcaption b { color: var(--ink-2); font-weight: 500; }
+
+  /* ---- arrangement diagram -------------------------------------------- */
+
+  .fp-wrap { padding: 4mm 5mm; background: var(--panel); border: 1px solid var(--rule); }
+  .fp { position: relative; aspect-ratio: 65 / 26; width: 100%; max-width: 152mm; margin: 0 auto; }
+  .fp-board {
+    position: absolute; inset: 0 10.8% 0 0;
+    border: 1.4px solid var(--ink);
+    border-radius: 1.5mm;
+    background: color-mix(in srgb, var(--sheet) 70%, transparent);
+  }
+  .fp-edge {
+    position: absolute; left: 0; right: 10.8%; bottom: -3.4mm;
+    text-align: center;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 6pt; color: var(--ink-3);
+  }
+  .blk {
+    position: absolute;
+    border: 1px solid var(--rule-2);
+    background: var(--sheet);
+    border-radius: .6mm;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    text-align: center; padding: .4mm; overflow: hidden;
+  }
+  .blk .r {
+    font-family: "Archivo", Arial, sans-serif;
+    font-size: 6.6pt; font-weight: 700; line-height: 1.05; letter-spacing: -.01em;
+  }
+  .blk .n {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 5.5pt; line-height: 1.15; color: var(--ink-3); margin-top: .3mm;
+  }
+  .blk--rf   { border-color: var(--rf); background: var(--rf-soft); }
+  .blk--rf .r { color: var(--rf); }
+  .blk--rf .n { color: var(--rf); }
+  .blk--keep {
+    border-style: dashed; border-color: var(--rf);
+    background: repeating-linear-gradient(-45deg, transparent 0 3px, color-mix(in srgb, var(--rf) 9%, transparent) 3px 6px);
+  }
+  .blk--b    { border-color: var(--b); border-style: dashed; background: var(--b-soft); }
+  .blk--b .r, .blk--b .n { color: var(--b); }
+  .blk--ovh  { border-style: dashed; border-color: var(--rf); background: var(--rf-soft); }
+
+  /* ---- cards ---------------------------------------------------------- */
+
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; }
+  .card { border: 1px solid var(--rule); border-top: 2px solid var(--rf); background: var(--panel); padding: 3mm 3.4mm; }
+  .card--b { border-top-color: var(--b); }
+  .card .band {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 6.8pt; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--rf); margin-bottom: .8mm;
+  }
+  .card--b .band { color: var(--b); }
+  .spec { display: grid; grid-template-columns: auto 1fr; gap: .9mm 3mm; margin: 1.8mm 0 0; font-size: 8.3pt; }
+  .spec dt {
+    font-family: "Archivo", Arial, sans-serif; font-size: 6.9pt; font-weight: 600;
+    letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3);
+    padding-top: .35mm;
+  }
+  .spec dd { margin: 0; color: var(--ink-2); }
+  .spec dd strong { color: var(--ink); font-weight: 600; }
+
+  /* ---- tables --------------------------------------------------------- */
+
+  table { width: 100%; border-collapse: collapse; font-size: 7.9pt; }
+  th, td { text-align: left; padding: .95mm 2mm .95mm 0; border-bottom: .5px solid var(--rule); vertical-align: top; }
+  thead th {
+    font-family: "Archivo", Arial, sans-serif; font-size: 6.7pt; font-weight: 600;
+    letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3);
+    border-bottom: 1px solid var(--rule-2); white-space: nowrap;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  td.m, th.m { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 7.3pt; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.sig { font-family: "Archivo", Arial, sans-serif; font-weight: 600; font-size: 7.6pt; white-space: nowrap; }
+  tr.new td { background: var(--b-soft); }
+  tr.new td.sig { color: var(--b); }
+  .tag {
+    display: inline-block; font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 6.3pt; letter-spacing: .05em; padding: .1mm 1.1mm; border-radius: .5mm;
+    border: .5px solid currentColor; white-space: nowrap;
+  }
+  .tag--fit { color: var(--ok); }
+  .tag--dnp { color: var(--ink-3); }
+
+  /* ---- layout helpers ------------------------------------------------- */
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 5mm; align-items: start; }
+  section { break-inside: avoid; }
+
+  .sheet--connections { gap: 3.2mm; }
+  .sheet--connections th, .sheet--connections td { padding-top: .68mm; padding-bottom: .68mm; }
+  .sheet--connections ul.tight li { margin-bottom: .72mm; }
+  .sheet--antennas { gap: 3mm; }
+  .sheet--antennas .card { padding: 2.5mm 3mm; }
+  .sheet--antennas .spec { font-size: 7.9pt; gap: .7mm 2.5mm; }
+  .sheet--antennas ul.tight { font-size: 8pt !important; }
+  .sheet--power { gap: 3mm; }
+  .sheet--power ul.tight { font-size: 7.6pt !important; }
+  .sheet--power .two-col section { break-inside: auto; }
+  .sheet--parts { gap: 2.2mm; }
+  .sheet--parts th, .sheet--parts td { padding-top: .64mm; padding-bottom: .64mm; }
+  .sheet--parts ul.tight { font-size: 7.3pt !important; }
+  .sheet--parts ul.tight li { break-inside: avoid-column; }
+
+  ul.tight { margin: 0; padding-left: 3.6mm; }
+  ul.tight li { margin-bottom: 1.1mm; }
+  ul.tight li:last-child { margin-bottom: 0; }
+  ul.tight li::marker { color: var(--rule-2); }
+
+  ol.risks { margin: 0; padding-left: 4.6mm; counter-reset: r; list-style: none; }
+  ol.risks li { position: relative; margin-bottom: 1.5mm; }
+  ol.risks li:last-child { margin-bottom: 0; }
+  ol.risks li::before {
+    counter-increment: r; content: counter(r);
+    position: absolute; left: -4.6mm; top: .1mm;
+    font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 6.4pt;
+    color: var(--rf); font-weight: 600;
+  }
+
+  .callout {
+    font-size: 8.3pt; line-height: 1.5; color: var(--ink-2);
+    background: var(--panel); border-left: 2px solid var(--rf);
+    padding: 2.2mm 3mm;
+  }
+  .callout b { color: var(--ink); font-weight: 600; }
+
+  .footblock {
+    margin-top: auto;
+    border-top: 1px solid var(--rule-2);
+    padding-top: 1.8mm;
+    display: flex; justify-content: space-between; gap: 6mm;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 6.5pt; color: var(--ink-3); letter-spacing: .04em;
+  }
+
+  figure svg { width: 100%; height: auto; display: block; }
+
+  /* ---- responsive ----------------------------------------------------- */
+
+  @media screen and (max-width: 780px) {
+    body { padding: 12px 8px 32px; font-size: 11px; }
+    .sheet { width: 100%; min-height: 0; padding: 16px 14px; }
+    .two-col, .cards { grid-template-columns: 1fr; }
+  }
+
+  /* ---- print ---------------------------------------------------------- */
+
+  @page { size: A4; margin: 0; }
+  @media print {
+    :root {
+      --paper: #fff; --sheet: #fff; --panel: #F4F5F6;
+      --ink: #14181D; --ink-2: #4B535C; --ink-3: #7D868F;
+      --rule: #D8DDE2; --rule-2: #BFC7CE;
+      --rf: #A8481A; --rf-soft: #F3E4D8;
+      --b: #1C5793; --b-soft: #DDE7F2; --ok: #2C6E51;
+    }
+    body { background: #fff; padding: 0; gap: 0; display: block; }
+    .sheet {
+      width: 210mm; height: 297mm; min-height: 0;
+      box-shadow: none; margin: 0;
+      break-after: page; page-break-after: always;
+    }
+    .sheet:last-of-type { break-after: auto; page-break-after: auto; }
+    a { color: var(--ink); border-bottom-color: var(--rule-2); }
+  }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+
+<!-- ==================== SHEET 1 ==================== -->
+<article class="sheet">
+
+  <header class="titleblock">
+    <div>
+      <p class="eyebrow">Hardware design brief</p>
+      <h1>LoRa Soil Sensor Node</h1>
+    </div>
+    <dl class="tb-meta">
+      <dt>Product</dt><dd>LoRa soil sensor</dd>
+      <dt>Radios</dt><dd>868 MHz LoRa · 2.4 GHz BLE</dd>
+      <dt>Antennas</dt><dd>868 MHz PCB · 2.4 GHz in module</dd>
+      <dt>Power</dt><dd>USB-C or external 2×AA holder</dd>
+      <dt>PCB</dt><dd>4 layers · 0.8 mm finished</dd>
+      <dt>Date</dt><dd>25 August 2026 · sheet 1 of 6</dd>
+    </dl>
+  </header>
+
+  <section>
+    <h2>Design scope</h2>
+    <table>
+      <tbody>
+        <tr><td class="sig">Function</td><td>Battery-capable soil sensor node with an 868 MHz LoRa link.</td></tr>
+        <tr><td class="sig">Controller</td><td>ESP32-S3-WROOM-1 module with its integrated 2.4 GHz antenna.</td></tr>
+        <tr><td class="sig">Sensor</td><td>External Adafruit STEMMA soil sensor connected by 3.3 V I<sup>2</sup>C.</td></tr>
+        <tr><td class="sig">Power</td><td>USB-C or two AA cells in series through an external holder. No charger.</td></tr>
+        <tr><td class="sig">Power cycle</td><td>PCB-mounted 15-minute timer switches the ESP32, LoRa module and sensor off together.</td></tr>
+        <tr><td class="sig">Connectors</td><td>USB-C, battery and I<sup>2</sup>C connectors are fitted. Unused connectors remain empty.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>System description</h2>
+    <p class="lede">U6 reads the external soil sensor over I<sup>2</sup>C and communicates with U5 over SPI.
+    U5 drives the 868 MHz antenna through a 50 Ω feed and matching network. The ESP32 module provides the
+    2.4 GHz antenna. J1 provides USB power and USB D+/D−; J3 connects to an external 2×AA holder.</p>
+    <p class="lede">U4 starts the switched 3.3 V rail every 15 minutes. A <code>DONE</code> edge from IO4 switches
+    the rail off. U6, U5 and J2 are powered only from this rail and are unpowered between cycles. Only the signals
+    listed as firmware-fixed on sheet 5 have mandatory GPIO numbers; the other GPIO numbers are recommendations.</p>
+  </section>
+
+  <section>
+    <h2>Arrangement <span class="h2-note">top view · not a fixed outline</span></h2>
+    <figure id="arrangement-diagram">
+      <div class="fp-wrap">
+        <div class="fp">
+          <div class="fp-board"></div>
+
+          <div class="blk blk--keep" style="left:0;top:0;width:32.3%;height:100%">
+            <span class="r" style="color:var(--rf)">868 MHz antenna area</span>
+            <span class="n" style="color:var(--rf)">antenna copper only</span>
+          </div>
+          <div class="blk blk--rf" style="left:1.54%;top:11.5%;width:29.2%;height:46.2%">
+            <span class="r">Printed helical antenna</span>
+            <span class="n">TI DN038 shape</span>
+          </div>
+
+          <div class="blk blk--rf" style="left:32.6%;top:30.8%;width:5.1%;height:23.1%">
+            <span class="r" style="font-size:5.4pt">match</span>
+            <span class="n" style="font-size:4.8pt">+ test pt</span>
+          </div>
+
+          <div class="blk" style="left:38.5%;top:1.9%;width:6.2%;height:13.5%"><span class="r" style="font-size:5.6pt">SW1</span></div>
+          <div class="blk" style="left:47.7%;top:1.9%;width:6.2%;height:13.5%"><span class="r" style="font-size:5.6pt">SW2</span></div>
+
+          <div class="blk" style="left:39.2%;top:19.2%;width:17.8%;height:42.3%">
+            <span class="r">LoRa module</span>
+            <span class="n">Wio-SX1262-N</span>
+          </div>
+          <div class="blk" style="left:38.5%;top:63.5%;width:18.5%;height:11.5%">
+            <span class="r" style="font-size:5.6pt">Regulator · USB ESD</span>
+          </div>
+          <div class="blk" style="left:40%;top:75%;width:13.8%;height:25%">
+            <span class="r">USB-C</span>
+            <span class="n">bottom edge</span>
+          </div>
+
+          <div class="blk blk--b" style="left:57.8%;top:0;width:10.8%;height:20.8%">
+            <span class="r">Battery</span>
+            <span class="n">2 pin, top edge</span>
+          </div>
+
+          <div class="blk blk--b" style="left:69.2%;top:0;width:12.3%;height:20.8%">
+            <span class="r">Sensor plug</span>
+            <span class="n">I<sup>2</sup>C, top edge</span>
+          </div>
+
+          <div class="blk" style="left:58%;top:65.4%;width:8%;height:25%">
+            <span class="r" style="font-size:5.2pt">timer</span>
+            <span class="n" style="font-size:4.7pt">15 min</span>
+          </div>
+
+          <div class="blk" style="left:66.8%;top:23.1%;width:22.4%;height:69.2%">
+            <span class="r">ESP32-S3-WROOM-1</span>
+            <span class="n">module with antenna</span>
+          </div>
+          <div class="blk blk--ovh" style="left:89.2%;top:23.1%;width:10%;height:69.2%">
+            <span class="r" style="font-size:5.2pt;color:var(--rf)">2.4 GHz</span>
+            <span class="n" style="font-size:4.8pt">outside PCB</span>
+          </div>
+
+          <div class="fp-edge">board edge</div>
+        </div>
+      </div>
+      <figcaption><b>Fig 1 — Conceptual arrangement of the main parts, seen from the top.</b> This is not a
+      dimensioned placement drawing. Use the manufacturer courtyards and the antenna geometry on sheet 2.
+      One radio sits at each end with the ground plane between them. The antenna
+      section of the ESP32 module must sit completely outside the PCB outline. The battery and sensor plugs
+      (blue) sit on the top edge, away from the USB-C cable. The timer sits beside the power converter in the
+      grounded centre of the board. Small resistors and capacitors fill the free space.</figcaption>
+    </figure>
+  </section>
+
+  <footer class="footblock">
+    <span>LoRa soil sensor · hardware design brief</span>
+    <span>Sheet 1 of 6 — purpose and board arrangement</span>
+  </footer>
+</article>
+
+<!-- ==================== SHEET 2 ==================== -->
+<article class="sheet sheet--antennas">
+
+  <header class="titleblock">
+    <div>
+      <p class="eyebrow">Hardware design brief</p>
+      <h1>Antennas and Manufacturing</h1>
+    </div>
+    <dl class="tb-meta">
+      <dt>LoRa</dt><dd>868 MHz printed helical</dd>
+      <dt>Bluetooth</dt><dd>ESP32 module antenna</dd>
+      <dt>PCB</dt><dd>4 layers, minimum practical size</dd>
+      <dt>Date</dt><dd>25 August 2026 · sheet 2 of 6</dd>
+    </dl>
+  </header>
+
+  <section>
+    <h2>Antennas <span class="h2-note">main-PCB LoRa antenna · certified ESP32 module antenna</span></h2>
+    <div class="cards">
+
+      <div class="card">
+        <p class="band">868 MHz · LoRa</p>
+        <h3>Printed helical antenna</h3>
+        <dl class="spec">
+          <dt>Design</dt><dd>Import the <a href="https://www.ti.com/lit/swra416">TI DN038 (SWRA416)</a> 868 MHz Gerber antenna and its feed/ground boundary without redrawing. Do not reduce the adjacent ground area shown by TI. Extend the main-board ground only away from the antenna, then tune on the finished board in its enclosure</dd>
+          <dt>Copper</dt><dd><strong>19 × 12 mm</strong>, on the top and bottom layers, joined by vias</dd>
+          <dt>Clear area</dt><dd>Only the DN038 top/bottom helix copper and its inter-layer vias may enter the antenna area. Those vias are part of the antenna and must never connect to GND. Keep all planes, tracks, parts and unrelated copper out of the Gerber-defined antenna area on every layer</dd>
+          <dt>Matching</dt><dd>Pi network (one series part, two shunt parts) at the feed point. TI used a 1.0 pF series capacitor and a 12 nH shunt inductor</dd>
+          <dt>Feed and test</dt><dd>Use a 50 Ω line calculated from the released stack-up. Connect U5 ANT → R18 (0 Ω) → the radio-side matching node. Connect J4 centre → R19 (0 Ω) → the same node; J4 shell goes to a dense ground return. Production: R18 fitted, R19 and J4 DNP. VNA setup: remove R18, then fit R19 and J4. Keep the DNP branch short and record the VNA reference plane</dd>
+        </dl>
+      </div>
+
+      <div class="card card--b">
+        <p class="band">2.4 GHz · Bluetooth and Wi-Fi</p>
+        <h3>Antenna inside the module</h3>
+        <dl class="spec">
+          <dt>Design</dt><dd>Use the antenna integrated into the <a href="https://www.espressif.com/en/products/modules">ESP32-S3-WROOM-1</a> module. Do not add an external 2.4 GHz matching network or antenna</dd>
+          <dt>Compliance</dt><dd>Follow the module manufacturer's antenna placement and enclosure conditions</dd>
+          <dt>Placement</dt><dd>Place the antenna end of the module <strong>completely outside the PCB outline</strong></dd>
+          <dt>On the PCB</dt><dd>Follow Espressif's module keep-out drawing. This project requires the antenna section outside the base-board outline, with ground copper and stitching vias ending at the specified boundary</dd>
+          <dt>Enclosure</dt><dd>At least <strong>15 mm of free space in every direction</strong> around the antenna once the board is in its case. See the <a href="https://docs.espressif.com/projects/esp-hardware-design-guidelines/en/latest/esp32s3/pcb-layout-design.html">Espressif layout guidelines</a></dd>
+        </dl>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>PCB and manufacturing requirements</h2>
+    <div class="two-col">
+      <div>
+        <h3 style="font-size:7.6pt;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);margin-bottom:1.4mm">Layout</h3>
+        <ul class="tight" style="font-size:8.3pt">
+          <li><b>Use the minimum practical outline</b> that satisfies component courtyards, both antenna keep-outs
+          and the DN038 feed/ground geometry. Do not reduce the DN038 adjacent ground area.</li>
+          <li><b>Four layers, 0.8 mm finished thickness.</b> Obtain the fabricator's released impedance stack-up
+          before routing. Signals are on top and bottom; one inner layer is ground and the other is power. Remove
+          both inner planes from the defined 868 MHz and 2.4 GHz antenna keep-out areas.</li>
+          <li><b>One antenna at each end, left and right</b>, as far apart as the board allows.</li>
+          <li><b>USB-C on the bottom edge</b>, with the battery and soil-sensor connectors on the top edge.</li>
+          <li><b>USB-C or two series-connected AA cells may power the board.</b> USB takes priority and must not
+          feed current into the cells. Do not fit a charging circuit.</li>
+          <li><b>The complete 3.3 V rail is switched.</b> Use the timer and buck-boost wiring on sheet 3; do not leave
+          the sensor or either radio on an unswitched supply.</li>
+          <li><b>ERC and DRC must report zero errors</b>, including schematic parity. This is a condition of delivery.</li>
+        </ul>
+      </div>
+      <div>
+        <h3 style="font-size:7.6pt;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);margin-bottom:1.4mm">Fabrication and assembly</h3>
+        <ul class="tight" style="font-size:8.3pt">
+          <li><b>Surface finish:</b> lead-free HASL.</li>
+          <li><b>Ground vias:</b> 0.3 mm finished hole, 0.6 mm pad. Stitch ground at 3 mm spacing or closer around both
+          antenna keep-outs, along the 50 Ω feed and around the board edge. The DN038 helix inter-layer vias are
+          separate antenna features: copy their 0.38 mm diameter from the TI Gerber and never connect them to GND.</li>
+          <li><b>Placement:</b> modules, connectors, switches and the converter on top. Small resistors and
+          capacitors may be placed on the bottom.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footblock">
+    <span>LoRa soil sensor · hardware design brief</span>
+    <span>Sheet 2 of 6 — antennas and manufacturing</span>
+  </footer>
+</article>
+
+<!-- ==================== SHEET 3 ==================== -->
+<article class="sheet sheet--power">
+
+  <header class="titleblock">
+    <div>
+      <p class="eyebrow">Hardware design brief</p>
+      <h1>Battery Power and Timed Power-off</h1>
+    </div>
+    <dl class="tb-meta">
+      <dt>Timer</dt><dd>TPL5111 IC on the main PCB</dd>
+      <dt>Cycle</dt><dd>15 minutes nominal, resistor-set</dd>
+      <dt>Power off</dt><dd>ESP32 + LoRa + sensor</dd>
+      <dt>Date</dt><dd>25 August 2026 · sheet 3 of 6</dd>
+    </dl>
+  </header>
+
+  <section>
+    <h2>Timer requirement</h2>
+    <p class="lede">Fit <a href="https://www.ti.com/product/TPL5111">TPL5111DDCR</a> directly on the PCB. Fit R13
+    as 68.4 kΩ, 1% for a nominal 900-second cycle. Switch the complete <code>3V3_SWITCHED</code> rail so the ESP32,
+    LoRa module and sensor lose power together.</p>
+  </section>
+
+  <section>
+    <h2>Power and timer wiring <span class="h2-note">all nets and parts are on the main PCB</span></h2>
+    <figure id="power-diagram">
+      <svg viewBox="0 0 880 320" role="img" aria-label="Battery and USB power circuit. The external two-AA holder passes through reverse-polarity MOSFET Q1 to BAT_AON. U7 selects USB in preference to battery and supplies U2. U4 and USB drive U2 enable through D5. U2 supplies the switched 3.3 volt rail to the ESP32, LoRa module and sensor. GPIO4 returns to U4 DONE through Q2.">
+        <defs>
+          <marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0 0L10 5L0 10z" fill="currentColor"></path>
+          </marker>
+          <marker id="ar3-b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0 0L10 5L0 10z" fill="var(--b)"></path>
+          </marker>
+        </defs>
+
+        <g fill="none" stroke="currentColor" stroke-width="1.4">
+          <rect x="20" y="24" width="120" height="64" rx="3"></rect>
+          <rect x="180" y="24" width="140" height="64" rx="3"></rect>
+          <rect x="370" y="14" width="150" height="84" rx="3"></rect>
+          <rect x="570" y="20" width="150" height="72" rx="3"></rect>
+          <rect x="20" y="174" width="120" height="68" rx="3"></rect>
+          <rect x="180" y="156" width="170" height="100" rx="3"></rect>
+          <rect x="570" y="128" width="150" height="100" rx="3"></rect>
+          <rect x="760" y="128" width="100" height="100" rx="3"></rect>
+        </g>
+        <g fill="none" stroke="var(--b)" stroke-width="1.4">
+          <rect x="370" y="242" width="150" height="64" rx="3"></rect>
+        </g>
+
+        <g font-family="Archivo, Arial, sans-serif" font-size="12" font-weight="600" fill="currentColor" text-anchor="middle">
+          <text x="80" y="47">J3 · battery</text>
+          <text x="250" y="47">Q1 · Si2367DS</text>
+          <text x="445" y="38">U4 · TPL5111</text>
+          <text x="645" y="43">D5 · enable OR</text>
+          <text x="80" y="198">J1 · USB-C</text>
+          <text x="265" y="181">U7 · TPS2116</text>
+          <text x="645" y="153">U2 · TPS631000</text>
+          <text x="810" y="153">3V3_SWITCHED</text>
+        </g>
+        <g font-family="Archivo, Arial, sans-serif" font-size="12" font-weight="600" fill="var(--b)" text-anchor="middle">
+          <text x="445" y="266">Q2 · DONE interface</text>
+        </g>
+        <g font-family="IBM Plex Mono, monospace" font-size="9.4" fill="var(--ink-3)" text-anchor="middle">
+          <text x="80" y="64">external 2×AA holder</text>
+          <text x="80" y="78">2.0 V min while loaded</text>
+          <text x="250" y="66">reverse-polarity</text>
+          <text x="250" y="80">protection</text>
+          <text x="445" y="57">R13 68.4 kΩ · 15 min</text>
+          <text x="445" y="75">DRVn active high</text>
+          <text x="445" y="89">VDD = BAT_AON</text>
+          <text x="645" y="61">BAT54C</text>
+          <text x="645" y="78">DRVn or USB → PWR_EN</text>
+          <text x="80" y="216">VBUS 5 V</text>
+          <text x="80" y="231">D+/D− separate</text>
+          <text x="265" y="201">VIN1 USB · VIN2 battery</text>
+          <text x="265" y="218">USB priority</text>
+          <text x="265" y="237">VOUT = VIN_RAW</text>
+          <text x="645" y="172">3.3 V buck-boost</text>
+          <text x="645" y="189">EN = PWR_EN</text>
+          <text x="645" y="207">load disconnect · R17 10 kΩ</text>
+          <text x="810" y="174">U6 · ESP32</text>
+          <text x="810" y="191">U5 · LoRa</text>
+          <text x="810" y="208">J2 · sensor</text>
+        </g>
+        <g font-family="IBM Plex Mono, monospace" font-size="9.4" fill="var(--b)" text-anchor="middle">
+          <text x="445" y="285">IO4 through 47 kΩ</text>
+          <text x="445" y="299">collector to U4 DONE</text>
+        </g>
+
+        <g stroke="currentColor" stroke-width="1.4" fill="none" color="currentColor">
+          <path d="M140 56H176" marker-end="url(#ar3)"></path>
+          <path d="M320 56H366" marker-end="url(#ar3)"></path>
+          <path d="M140 208H176" marker-end="url(#ar3)"></path>
+          <path d="M350 206H530V178H566" marker-end="url(#ar3)"></path>
+          <path d="M140 190H160V114H548V74H566" marker-end="url(#ar3)"></path>
+          <path d="M520 56H548V42H566" marker-end="url(#ar3)"></path>
+          <path d="M645 92V124" marker-end="url(#ar3)"></path>
+          <path d="M720 178H756" marker-end="url(#ar3)"></path>
+          <circle cx="340" cy="114" r="4" fill="var(--sheet)" stroke="none"></circle>
+          <path d="M340 56V132H265V152" marker-end="url(#ar3)"></path>
+          <circle cx="340" cy="56" r="2.6" fill="currentColor" stroke="none"></circle>
+        </g>
+        <g stroke="var(--b)" stroke-width="1.4" fill="none" color="var(--b)">
+          <path d="M810 228V274H524" marker-end="url(#ar3-b)"></path>
+          <circle cx="445" cy="206" r="4" fill="var(--sheet)" stroke="none"></circle>
+          <path d="M445 242V102" marker-end="url(#ar3-b)"></path>
+        </g>
+        <g font-family="IBM Plex Mono, monospace" font-size="9.2" fill="var(--ink-2)" text-anchor="middle">
+          <text x="158" y="48">BAT_RAW</text>
+          <text x="344" y="48">BAT_AON</text>
+          <text x="490" y="198">VIN_RAW</text>
+          <text x="738" y="169">3.3 V</text>
+          <text x="206" y="107">USB_VBUS</text>
+          <text x="297" y="143">BAT_AON</text>
+        </g>
+        <g font-family="IBM Plex Mono, monospace" font-size="9.2" fill="var(--b)" text-anchor="middle">
+          <text x="667" y="268">IO4</text>
+          <text x="458" y="232">DONE</text>
+        </g>
+      </svg>
+      <figcaption><b>Fig 2 — Whole-unit power-off circuit.</b> U4 is fitted on the main PCB. On battery power, U4
+      enables U2 every 15 minutes. U2's load-disconnect output is the only 3.3 V rail
+      used by U6, U5 and J2, so the ESP32, LoRa module and soil sensor lose power together. USB VBUS overrides
+      <code>PWR_EN</code> for uninterrupted programming and setup. U7 selects USB before battery and blocks
+      reverse current; USB does not charge the battery.</figcaption>
+    </figure>
+  </section>
+
+  <div class="two-col">
+    <section>
+      <h2>Exact timer connections</h2>
+      <table>
+        <thead><tr><th class="m">U4 pin</th><th>Connect to</th></tr></thead>
+        <tbody>
+          <tr><td class="m">1 · VDD</td><td><code>BAT_AON</code>; C13 0.1 µF to GND at the pin</td></tr>
+          <tr><td class="m">2 · GND</td><td>Ground</td></tr>
+          <tr><td class="m">3 · DELAY</td><td>R13 68.4 kΩ, 1% to GND; SW3 momentary to <code>BAT_AON</code></td></tr>
+          <tr><td class="m">4 · DONE</td><td>Q2 collector; R12 100 kΩ pull-up to <code>BAT_AON</code></td></tr>
+          <tr><td class="m">5 · DRVn</td><td>D5 anode A; D5 common cathode is <code>PWR_EN</code></td></tr>
+          <tr><td class="m">6 · EN</td><td>Hard-wire to <code>BAT_AON</code> for repeating timer mode</td></tr>
+        </tbody>
+      </table>
+      <p style="margin-top:1.6mm;font-size:7.8pt;color:var(--ink-2)"><b>Q2 is an MMBT3904 level shifter:</b>
+      pin 1 base from IO4 through R14 47 kΩ, pin 2 emitter to GND and pin 3 collector to U4 DONE; fit R15 1 MΩ
+      base-to-GND. This prevents
+      <code>BAT_AON</code> from reaching the 3.3 V GPIO and guarantees U4's 0.7 × VDD high threshold. <b>D5 is a BAT54C dual
+      common-cathode diode:</b> pin 1 anode to U4 DRVn, pin 2 anode to USB VBUS and pin 3 common cathode to
+      <code>PWR_EN</code> and R16 100 kΩ to GND. Thus U4 controls
+      battery operation, while any USB connection holds the board on.</p>
+    </section>
+
+    <section>
+      <h2>Power input and converter</h2>
+      <ul class="tight" style="font-size:8pt">
+        <li><b>J3:</b> JST <code>S2B-PH-SM4-TB</code>, 2 pin, side entry. Pin 1 <code>BAT_RAW</code>, pin 2 GND.
+        Fit on every board; leave empty when unused.</li>
+        <li><b>Battery:</b> external two-AA series holder; alkaline, NiMH or 1.5 V lithium primary. J3 range is
+        2.0 V minimum while loaded to 3.6 V maximum. Do not use a rectangular 9 V battery. Fit no charger.</li>
+        <li><b>Q1:</b> Vishay Si2367DS-T1-GE3 P-channel MOSFET for reverse-battery protection. Pin 3 drain to
+        <code>BAT_RAW</code>, pin 2 source to <code>BAT_AON</code>, pin 1 gate to GND through R20 1 MΩ.</li>
+        <li><b>U7:</b> TPS2116DRLR power multiplexer. Pin 1 GND; pins 2 and 7 <code>VIN_RAW</code>; pin 3
+        <code>USB_VBUS</code>; pin 4 <code>PR1</code>; pin 5 <code>MODE</code> tied to <code>USB_VBUS</code>; pin 6
+        <code>BAT_AON</code>; pin 8 to a status test pad only. Make the PR1 divider with R21 330 kΩ from
+        <code>USB_VBUS</code> to PR1 and R22 100 kΩ from PR1 to GND. Fit 1 µF to GND at VIN1, VIN2 and VOUT.
+        This priority-mode
+        wiring selects USB when present and blocks reverse current into either source.</li>
+        <li><b>U2:</b> TPS631000DRLR adjustable buck-boost converter. Pin 4 VIN to <code>VIN_RAW</code>; pin 1 VOUT
+        to <code>3V3_SWITCHED</code>; pin 5 EN to <code>PWR_EN</code>; pin 6 MODE to GND for power-save mode;
+        pin 7 to GND. Connect a 1 µH inductor between pins 3 LX1 and 2 LX2. Set 3.3 V with R23 511 kΩ from
+        VOUT to pin 8 FB and R24 91 kΩ from FB to GND. Fit 22 µF at VIN and 47 µF at VOUT, placed as shown in
+        the TI reference layout and selected so their effective capacitance remains within the datasheet limits.
+        Fit R17 10 kΩ from <code>3V3_SWITCHED</code> to GND.</li>
+        <li><b>Power domains:</b> Q1 produces <code>BAT_AON</code>. Connect <code>BAT_AON</code> only to U4 VDD/EN,
+        U7 VIN2 and the stated always-on pull resistors. U7 VOUT is <code>VIN_RAW</code> and connects to U2 VIN.
+        U2 VOUT is <code>3V3_SWITCHED</code>. Every ESP32, Wio-SX1262-N and sensor supply pin connects only to
+        <code>3V3_SWITCHED</code>.</li>
+      </ul>
+    </section>
+  </div>
+
+  <footer class="footblock">
+    <span>LoRa soil sensor · hardware design brief</span>
+    <span>Sheet 3 of 6 — embedded timer and switched power</span>
+  </footer>
+</article>
+
+<!-- ==================== SHEET 4 ==================== -->
+<article class="sheet">
+
+  <header class="titleblock">
+    <div>
+      <p class="eyebrow">Hardware design brief</p>
+      <h1>Power-off Verification</h1>
+    </div>
+    <dl class="tb-meta">
+      <dt>Off state</dt><dd>Complete 3.3 V power-off</dd>
+      <dt>Resume type</dt><dd>Cold boot</dd>
+      <dt>Control path</dt><dd>IO4 through Q2 to DONE</dd>
+      <dt>Date</dt><dd>25 August 2026 · sheet 4 of 6</dd>
+    </dl>
+  </header>
+
+  <section>
+    <h2>Expected power states</h2>
+    <table>
+      <thead><tr><th>Inputs and state</th><th class="m">U4 DRVn</th><th class="m">PWR_EN</th><th class="m">3V3_SWITCHED</th><th>Result</th></tr></thead>
+      <tbody>
+        <tr><td>Battery · active interval</td><td class="m">high</td><td class="m">high</td><td class="m">3.3 V</td><td>ESP32, LoRa and sensor on</td></tr>
+        <tr><td>Battery · after DONE</td><td class="m">low</td><td class="m">low</td><td class="m">&lt;0.3 V after 5 s</td><td>ESP32, LoRa and sensor off</td></tr>
+        <tr><td>Battery + USB · after DONE</td><td class="m">low</td><td class="m">high</td><td class="m">3.3 V</td><td>USB override keeps system on</td></tr>
+        <tr><td>No battery · USB connected</td><td class="m">U4 off</td><td class="m">high</td><td class="m">3.3 V</td><td>Normal USB-powered operation</td></tr>
+      </tbody>
+    </table>
+    <div class="callout" style="margin-top:3mm">
+      <b>The 15 minutes is measured between timer wake edges.</b> If the active period takes 8 seconds,
+      the power-off time is approximately 14 minutes 52 seconds. If <code>DONE</code> is never asserted, U4
+      keeps the board on until the end of the interval, removes power for about 50 ms, then starts the next cycle.
+      With USB attached, D5 holds <code>PWR_EN</code> high, so a DONE edge does not switch off the board.
+    </div>
+  </section>
+
+  <div class="two-col">
+    <section>
+      <h2>Physical control interface</h2>
+      <table>
+        <thead><tr><th>IO4 level</th><th>Q2</th><th>U4 DONE pin</th></tr></thead>
+        <tbody>
+          <tr><td class="m">high</td><td>on</td><td class="m">low</td></tr>
+          <tr><td class="m">low or high-Z</td><td>off</td><td class="m">high</td></tr>
+        </tbody>
+      </table>
+      <p style="margin-top:1.5mm;font-size:7.8pt;color:var(--ink-2)">U4 switches off only when its DONE pin
+      changes from low to high. Provide labelled test pads at IO4/Q2 base and U4 DONE so this edge can be checked
+      without firmware. Do not connect IO4 directly to the always-on DONE net.</p>
+    </section>
+
+    <section>
+      <h2>Bring-up acceptance</h2>
+      <ul class="tight" style="font-size:8.1pt">
+        <li>Design and verify the power path for 550 mA peak at 3.3 V and approximately 1 A from a 2.0 V pack.
+        Calculate input bulk capacitance from the measured load transient and AA cell, holder and contact resistance.</li>
+        <li>On battery, verify a nominal 15-minute interval between power-up edges and document measured tolerance.</li>
+        <li>Without USB, after <code>DONE</code>, verify <code>3V3_SWITCHED</code> falls below 0.3 V within 5 s;
+        confirm the ESP32, LoRa module and sensor are unpowered.</li>
+        <li>Measure total battery current while powered off. Target <b>under 5 µA at 25 °C</b>, including input leakage and U2
+        shutdown current; record the actual result.</li>
+        <li>Press SW3 while powered off and confirm a wake within 40 ms. With 5 V USB attached, confirm the board
+        stays on and current from USB into J3 is at most 5 µA at 25 °C.</li>
+        <li>Use a current-limited bench source at J3. Run a full sensor read and +22 dBm LoRa transmit while J3
+        remains at 2.0 V, then at 3.6 V. Capture droop at U2 VIN, U5 pad 8 and U6 pad 2; no brownout is allowed.</li>
+        <li>Repeat the low-voltage transmit test with representative partly discharged AA cells, including holder
+        and contact resistance. Record the practical battery cutoff.</li>
+      </ul>
+    </section>
+  </div>
+
+  <footer class="footblock">
+    <span>LoRa soil sensor · hardware design brief</span>
+    <span>Sheet 4 of 6 — control wiring and acceptance tests</span>
+  </footer>
+</article>
+
+<!-- ==================== SHEET 5 ==================== -->
+<article class="sheet sheet--connections">
+
+  <header class="titleblock">
+    <div>
+      <p class="eyebrow">Hardware design brief</p>
+      <h1>Connections and Pin Allocation</h1>
+    </div>
+    <dl class="tb-meta">
+      <dt>Radio pins</dt><dd>Firmware-fixed SPI and control</dd>
+      <dt>Sensor port</dt><dd>I<sup>2</sup>C, 3.3 V, always fitted</dd>
+      <dt>PCB</dt><dd>4 layers · 0.8 mm finished</dd>
+      <dt>Battery port</dt><dd>External 2×AA holder</dd>
+      <dt>Date</dt><dd>25 August 2026 · sheet 5 of 6</dd>
+    </dl>
+  </header>
+
+  <section>
+    <h2>How the parts connect <span class="h2-note">blue is the sensor path</span></h2>
+    <figure id="system-diagram">
+      <svg viewBox="0 0 880 285" role="img" aria-label="System connection diagram. USB-C and the two-AA battery holder feed the power and timer block. The switched 3.3 volt rail powers the ESP32, LoRa module and sensor connector. The ESP32 communicates with the LoRa module over SPI and control signals. The LoRa module connects through a matching network to the 868 megahertz printed antenna. The I2C bus passes through ESD protection and J2 to the external soil sensor.">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"></path>
+          </marker>
+          <marker id="ar-rf" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--rf)"></path>
+          </marker>
+          <marker id="ar-b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--b)"></path>
+          </marker>
+        </defs>
+
+        <g fill="none" stroke="currentColor" stroke-width="1.3">
+          <rect x="18" y="18" width="132" height="60" rx="3"></rect>
+          <rect x="18" y="112" width="132" height="60" rx="3"></rect>
+          <rect x="230" y="30" width="190" height="110" rx="3"></rect>
+          <rect x="480" y="30" width="170" height="110" rx="3"></rect>
+        </g>
+        <g fill="none" stroke="var(--rf)" stroke-width="1.3">
+          <rect x="700" y="50" width="58" height="70" rx="3"></rect>
+          <rect x="790" y="36" width="78" height="98" rx="3"></rect>
+        </g>
+        <g fill="none" stroke="var(--b)" stroke-width="1.3">
+          <rect x="230" y="208" width="120" height="52" rx="3"></rect>
+          <rect x="400" y="208" width="140" height="52" rx="3"></rect>
+          <rect x="590" y="198" width="230" height="72" rx="3" stroke-dasharray="5 4"></rect>
+        </g>
+
+        <g font-family="Archivo, Arial, sans-serif" font-size="12" font-weight="600" fill="currentColor" text-anchor="middle">
+          <text x="84" y="40">Power + timer</text>
+          <text x="84" y="134">J1 · USB-C</text>
+          <text x="325" y="55">U6 · ESP32-S3-WROOM-1</text>
+          <text x="565" y="55">U5 · Wio-SX1262-N</text>
+        </g>
+        <g font-family="IBM Plex Mono, monospace" font-size="9.5" fill="var(--ink-3)" text-anchor="middle">
+          <text x="84" y="57">USB or 2×AA</text>
+          <text x="84" y="70">switched 3.3 V</text>
+          <text x="84" y="151">VBUS + D+/D−</text>
+          <text x="84" y="165">U1 ESD at connector</text>
+          <text x="325" y="75">controller and USB</text>
+          <text x="325" y="116">integrated 2.4 GHz antenna</text>
+          <text x="325" y="130">module overhang</text>
+          <text x="565" y="75">SPI + control</text>
+          <text x="565" y="116">ANT pad · +22 dBm</text>
+        </g>
+        <g font-family="Archivo, Arial, sans-serif" font-size="11" font-weight="600" fill="var(--rf)" text-anchor="middle">
+          <text x="729" y="76">RF</text>
+          <text x="729" y="92">match</text>
+          <text x="829" y="72">868 MHz</text>
+          <text x="829" y="88">antenna</text>
+        </g>
+        <g font-family="IBM Plex Mono, monospace" font-size="8.8" fill="var(--rf)" text-anchor="middle">
+          <text x="729" y="108">pi network</text>
+          <text x="829" y="106">19 × 12 mm</text>
+          <text x="829" y="120">printed</text>
+        </g>
+
+        <g stroke="currentColor" stroke-width="1.3" fill="none" color="currentColor">
+          <path d="M 150 48 L 226 48" marker-end="url(#ar)"></path>
+          <path d="M 150 62 L 188 62 L 188 12 L 565 12 L 565 26" marker-end="url(#ar)"></path>
+          <path d="M 84 112 L 84 82" marker-end="url(#ar)"></path>
+          <path d="M 150 142 L 226 110" marker-end="url(#ar)"></path>
+          <path d="M 420 60 L 476 60" marker-end="url(#ar)"></path>
+          <path d="M 480 102 L 424 102" marker-end="url(#ar)"></path>
+          <path d="M 420 126 L 476 126" marker-end="url(#ar)"></path>
+        </g>
+        <g font-family="IBM Plex Mono, monospace" font-size="9" fill="var(--ink-2)" text-anchor="middle">
+          <text x="188" y="42">3V3_SWITCHED</text>
+          <text x="188" y="126">USB D+/D−</text>
+          <text x="450" y="53">SPI</text>
+          <text x="450" y="96">BUSY · DIO1</text>
+          <text x="450" y="120">NSS · NRST · RF_SW</text>
+        </g>
+        <g stroke="var(--rf)" stroke-width="1.3" fill="none" color="var(--rf)">
+          <path d="M 650 85 L 696 85" marker-end="url(#ar-rf)"></path>
+          <path d="M 758 85 L 786 85" marker-end="url(#ar-rf)"></path>
+        </g>
+        <text x="674" y="78" font-family="IBM Plex Mono, monospace" font-size="9" fill="var(--rf)" text-anchor="middle">50 Ω</text>
+
+        <g stroke="var(--b)" stroke-width="1.3" fill="none" color="var(--b)">
+          <path d="M 325 140 L 325 204" marker-start="url(#ar-b)" marker-end="url(#ar-b)"></path>
+          <path d="M 350 234 L 396 234" marker-start="url(#ar-b)" marker-end="url(#ar-b)"></path>
+          <path d="M 540 234 L 586 234" marker-start="url(#ar-b)" marker-end="url(#ar-b)"></path>
+        </g>
+        <g font-family="Archivo, Arial, sans-serif" font-size="11.5" font-weight="600" fill="var(--b)" text-anchor="middle">
+          <text x="290" y="230">U3 · ESD</text>
+          <text x="470" y="230">J2 · JST PH</text>
+          <text x="705" y="225">Adafruit STEMMA soil sensor</text>
+        </g>
+        <g font-family="IBM Plex Mono, monospace" font-size="9" fill="var(--b)" text-anchor="middle">
+          <text x="290" y="246">SDA + SCL</text>
+          <text x="470" y="246">pins 1→4: SCL · SDA · 3.3 V · GND</text>
+          <text x="705" y="243">I²C address 0x36</text>
+          <text x="705" y="258">external part</text>
+          <text x="325" y="184">IO5 SDA · IO6 SCL</text>
+        </g>
+      </svg>
+      <figcaption><b>Fig 3 — How the parts connect.</b> The battery holder, cells and soil sensor are off board.
+      USB or the battery feeds <code>3V3_SWITCHED</code>, which powers U6, U5 and J2. The sensor bus passes through
+      U3 to J2. <b>J2 is 3.3 V only:</b> the sensor pulls SDA and SCL up to its VIN pin.</figcaption>
+    </figure>
+  </section>
+
+  <div class="two-col">
+
+    <section>
+      <h2>Firmware-fixed pins <span class="h2-note">do not move these signals</span></h2>
+      <table>
+        <thead>
+          <tr><th>Signal</th><th class="m">GPIO</th><th class="m">ESP32 pad</th><th class="m">LoRa pad</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="sig">SPI SCK</td><td class="m">IO7</td><td class="m">7</td><td class="m">4</td></tr>
+          <tr><td class="sig">SPI MISO</td><td class="m">IO8</td><td class="m">12</td><td class="m">2</td></tr>
+          <tr><td class="sig">SPI MOSI</td><td class="m">IO9</td><td class="m">17</td><td class="m">3</td></tr>
+          <tr><td class="sig">NSS</td><td class="m">IO41</td><td class="m">34</td><td class="m">6</td></tr>
+          <tr><td class="sig">BUSY</td><td class="m">IO40</td><td class="m">33</td><td class="m">11</td></tr>
+          <tr><td class="sig">DIO1</td><td class="m">IO39</td><td class="m">32</td><td class="m">12</td></tr>
+          <tr><td class="sig">NRST</td><td class="m">IO42</td><td class="m">35</td><td class="m">5</td></tr>
+          <tr><td class="sig">USB D−</td><td class="m">IO19</td><td class="m">13</td><td class="m">—</td></tr>
+          <tr><td class="sig">USB D+</td><td class="m">IO20</td><td class="m">14</td><td class="m">—</td></tr>
+          <tr><td class="sig">User LED, active low</td><td class="m">IO48</td><td class="m">25</td><td class="m">—</td></tr>
+        </tbody>
+      </table>
+      <p style="margin-top:1.5mm;font-size:7.8pt;color:var(--ink-2)">USB D−/D+ are fixed by the ESP32-S3 silicon.
+      The other rows are fixed by the existing application. Moving any row requires a software change.</p>
+
+    </section>
+
+    <section>
+      <h2>The sensor connector <span class="h2-note">J2 · pin order is fixed by the sensor</span></h2>
+      <table>
+        <thead><tr><th class="m">Pin</th><th>Signal</th><th>Goes to</th></tr></thead>
+        <tbody>
+          <tr><td class="m">1</td><td class="sig">SCL</td><td>Recommended IO6, through U3</td></tr>
+          <tr><td class="m">2</td><td class="sig">SDA</td><td>Recommended IO5, through U3</td></tr>
+          <tr><td class="m">3</td><td class="sig">VIN</td><td><b>3V3_SWITCHED.</b> Not 5 V</td></tr>
+          <tr><td class="m">4</td><td class="sig">GND</td><td>Ground</td></tr>
+        </tbody>
+      </table>
+      <ul class="tight" style="font-size:8pt;margin-top:2mm">
+        <li><b>J2</b> — JST <code>S4B-PH-SM4-TB</code>, 4 pin, 2.0 mm pitch, side entry, surface mount. Put it on
+        the top edge. Mark pin 1 on copper and silkscreen; include a numbered mating-face view on the schematic.</li>
+        <li><b>U3</b> — USBLC6-2P6 ESD protection on SDA and SCL, placed beside J2.</li>
+        <li><b>R10, R11</b> — 4.7 kΩ pull-up footprints on SDA and SCL. <b>Leave them empty.</b> The sensor already
+        has 10 kΩ pull-ups. Fit only if the measured I<sup>2</sup>C rise time requires them; check the total sink current.</li>
+        <li><b>C12</b> — 1 µF capacitor on the 3.3 V feed to the connector.</li>
+        <li>The sensor answers at I<sup>2</sup>C address <code>0x36</code>.</li>
+        <li>Fit J2. Leave it empty when no sensor is connected.</li>
+      </ul>
+
+      <h3 style="margin-top:2.5mm">Recommended new connections</h3>
+      <table style="font-size:7.4pt">
+        <thead><tr><th>Signal</th><th class="m">GPIO</th><th>Check before release</th></tr></thead>
+        <tbody>
+          <tr class="new"><td class="sig">Timer DONE</td><td class="m">IO4</td><td>Check output use, strapping and module conflicts</td></tr>
+          <tr class="new"><td class="sig">I²C SDA</td><td class="m">IO5</td><td>Check available on N8R8 and suitable for I²C</td></tr>
+          <tr class="new"><td class="sig">I²C SCL</td><td class="m">IO6</td><td>Check available on N8R8 and suitable for I²C</td></tr>
+          <tr class="new"><td class="sig">RF_SW</td><td class="m">IO38</td><td>U5 pad 1; 10 kΩ pull-up. RX: H/DIO2 L; TX: L/DIO2 H; off: both L</td></tr>
+        </tbody>
+      </table>
+      <p style="margin-top:1.2mm;font-size:7.3pt;color:var(--ink-2)">These GPIOs may move if a datasheet conflict
+      is found; report any change. Pull IO0 up to 3.3 V with 10 kΩ; SW1 connects IO0 to GND. SW2 connects EN to
+      GND. Verify all N8R8 strapping pulls.</p>
+
+    </section>
+  </div>
+
+  <footer class="footblock">
+    <span>LoRa soil sensor · hardware design brief</span>
+    <span>Sheet 5 of 6 — system connections and fixed pins</span>
+  </footer>
+</article>
+
+<!-- ==================== SHEET 6 ==================== -->
+<article class="sheet sheet--parts">
+
+  <header class="titleblock">
+    <div>
+      <p class="eyebrow">Hardware design brief</p>
+      <h1>Parts and Deliverables</h1>
+    </div>
+    <dl class="tb-meta">
+      <dt>PCB</dt><dd>4 layers · 0.8 mm finished</dd>
+      <dt>Assembly</dt><dd>BOM and placement CSV</dd>
+      <dt>Connectors</dt><dd>Battery and I<sup>2</sup>C always fitted</dd>
+      <dt>Date</dt><dd>25 August 2026 · sheet 6 of 6</dd>
+    </dl>
+  </header>
+
+  <div class="two-col">
+    <section>
+      <h2>Main parts</h2>
+      <table>
+        <thead><tr><th>Ref</th><th>Required part</th></tr></thead>
+        <tbody>
+          <tr><td class="m">U6</td><td><a href="https://www.espressif.com/en/products/modules">ESP32-S3-WROOM-1-N8R8</a> — 8 MB flash, 8 MB PSRAM, integrated antenna</td></tr>
+          <tr><td class="m">U5</td><td><a href="https://www.seeedstudio.com/Wio-SX1262-Wireless-Module-without-IPEX-Tape-Reel-p-6417.html">Seeed Wio-SX1262-N without IPEX</a>, SKU 113991436. Do not substitute the IPEX-equipped version; its ANT pad is not connected</td></tr>
+          <tr><td class="m">U2</td><td><a href="https://www.ti.com/product/TPS631000">TPS631000DRLR</a> — adjustable buck-boost converter with load disconnect</td></tr>
+          <tr><td class="m">U4</td><td><a href="https://www.ti.com/product/TPL5111">TPL5111DDCR</a> — system timer, nominal 15-minute cycle</td></tr>
+          <tr><td class="m">U7</td><td><a href="https://www.ti.com/product/TPS2116">TPS2116DRLR</a> — USB-priority power multiplexer</td></tr>
+          <tr><td class="m">Q1</td><td>Vishay Si2367DS-T1-GE3 — P-channel MOSFET specified at VGS = −1.8 V, SOT-23</td></tr>
+          <tr><td class="m">Q2</td><td>onsemi MMBT3904LT1G — NPN transistor, SOT-23</td></tr>
+          <tr><td class="m">D5</td><td>Diodes Inc. BAT54C-7-F — dual common-cathode Schottky, SOT-23</td></tr>
+          <tr><td class="m">U1, U3</td><td><a href="https://www.st.com/en/protections-and-emi-filters/usblc6-2.html">USBLC6-2P6</a> — ESD protection, SOT-666</td></tr>
+          <tr><td class="m">J1</td><td><a href="https://en.krhro.com/Product-Details/726.html">HRO TYPE-C-31-M-12</a> — 16-contact USB 2.0 Type-C receptacle. Lock the procurement source and use the HRO Rev A manufacturer drawing; do not use a footprint from an unverified clone</td></tr>
+          <tr><td class="m">J2</td><td><a href="https://www.jst-mfg.com/product/detail_e.php?series=199">JST S4B-PH-SM4-TB</a> — 4-pin side-entry sensor connector</td></tr>
+          <tr><td class="m">J3</td><td>JST S2B-PH-SM4-TB — 2-pin connection to external 2×AA holder</td></tr>
+          <tr><td class="m">J4</td><td>Hirose U.FL-R-SMT-1(10) — VNA test connector, DNP</td></tr>
+          <tr><td class="m">SW1–SW3</td><td><a href="https://components.omron.com/us-en/products/switches/B3U">Omron B3U-1000P</a> — BOOT, RESET and manual timer trigger</td></tr>
+          <tr><td class="m">R13</td><td>68.4 kΩ, 1% — timer interval</td></tr>
+          <tr><td class="m">R17</td><td>10 kΩ — switched-rail discharge</td></tr>
+          <tr><td class="m">R18, R19</td><td>0 Ω RF jumpers — production fits R18 only; VNA setup fits R19 only</td></tr>
+          <tr><td class="m">L1</td><td>Murata DFE252012P-1R0M=P2 — 1 µH, 4.3 A saturation current</td></tr>
+          <tr><td class="m">Off board</td><td><a href="https://thepihut.com/products/adafruit-stemma-soil-sensor-i2c-capacitive-moisture-sensor-ada4026">Adafruit STEMMA soil sensor</a> and 4-pin JST PH cable</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>What to deliver</h2>
+      <ul class="tight" style="font-size:8.3pt">
+        <li><b>KiCad project</b> with separate sheets for power/timer, microcontroller, LoRa/radio and the I<sup>2</sup>C plug.</li>
+        <li><b>Schematic PDF.</b> Battery and I<sup>2</sup>C connectors and the timer are part of the design.</li>
+        <li><b>PCB layout</b> with zero ERC and DRC errors, including schematic parity, plus Gerber and drill files.</li>
+        <li><b>Part list and placement file</b> in the factory's CSV format. J1, J2 and J3 are fitted;
+        the VNA-only J4 footprint and R19 are DNP.</li>
+        <li><b>Fabrication notes</b> naming four layers, 0.8 mm finished thickness, the released impedance stack-up,
+        surface finish, via size and assembly sides.</li>
+        <li><b>Antenna tuning record</b> with the final matching values and measured VSWR across 863–870 MHz.</li>
+        <li><b>3D STEP file</b> for enclosure design.</li>
+      </ul>
+    </section>
+  </div>
+
+  <section>
+    <h2>Required support wiring <span class="h2-note">verify against the released manufacturer documents</span></h2>
+    <ul class="tight" style="font-size:7.55pt;color:var(--ink-2);columns:2;column-gap:8mm">
+      <li><b>U5:</b> pads 8 to <code>3V3_SWITCHED</code>, 7 and 10 to GND, and 9 to the 50 Ω RF path. Fit
+      100 nF and 10 µF beside pad 8. Provide series-damping footprints in SCK, MOSI, MISO and NSS; fit 22 Ω
+      initially and verify the values during bring-up.</li>
+      <li><b>U6:</b> pad 2 to <code>3V3_SWITCHED</code>; pads 1, 40 and exposed pad 41 to GND. Use Espressif's
+      reference decoupling. Pull EN up with 10 kΩ and fit 1 µF from EN to GND. Verify against the N8R8 module guidance.</li>
+      <li><b>J1:</b> use the exact HRO mating-face names. Join A6+B6 as D+ and A7+B7 as D−. Join
+      A4+A9+B4+B9 as <code>USB_VBUS</code>; join A1+A12+B1+B12 to GND. Fit separate 5.1 kΩ resistors from
+      A5/CC1 and B5/CC2 to GND. Leave A8/B8 SBU unconnected. Connect all four shell tabs directly to board GND
+      at the connector with short copper and multiple vias.</li>
+      <li><b>USB data:</b> route D−/D+ as a 90 Ω differential pair through U1, then through series footprints at
+      U6 to IO19/IO20. Fit 0 Ω initially; change to 22–33 Ω only after signal-integrity testing. Optional shunt
+      capacitors are DNP. The design is a USB 2.0 sink with no PD controller; do not assume more than 500 mA
+      from VBUS, and verify operation from a 5 V source current-limited to 500 mA.</li>
+      <li><b>U1 and U3:</b> follow the USBLC6-2P6 flow-through pinout. Pin 2 is GND. Pin 5 connects to
+      <code>USB_VBUS</code> for U1 and <code>3V3_SWITCHED</code> for U3. Place each device beside its connector
+      and fit 100 nF directly between pins 5 and 2.</li>
+      <li><b>User LED:</b> connect the LED anode to <code>3V3_SWITCHED</code> through 1 kΩ and its cathode to IO48.
+      This makes the firmware-fixed LED active low.</li>
+      <li><b>Release checks:</b> verify J3 polarity and mark it on copper and silkscreen. Keep the U2 switch node
+      away from both antennas. Apply the antenna keep-outs on sheet 2 and tune the assembled 868 MHz antenna.</li>
+    </ul>
+  </section>
+
+  <footer class="footblock">
+    <span>LoRa soil sensor · hardware design brief</span>
+    <span>Sheet 6 of 6 — parts, deliverables and release checks</span>
+  </footer>
+</article>
+</body>
+</html>

@@ -1,0 +1,89 @@
+(footprint "Pulse_W3000"
+	(version 20260206)
+	(generator "pcbnew")
+	(generator_version "10.0")
+	(layer "F.Cu")
+	(descr "Pulse W3000 ceramic monopole chip antenna, 7.0 x 1.6 mm. Land pattern from the Pulse datasheet 'PWB Pad Dimensions': two pads 1.2 x 1.6 mm, 7.8 mm over the pads. Pad 1 is the feed; pad 2 carries the printed tuning line")
+	(tags "antenna 868MHz chip Pulse W3000")
+	(property "Reference" "REF**"
+		(at 0 1.9 0)
+		(layer "F.SilkS")
+		(uuid "ad22d3d5-68c3-452e-8e97-19eeacae43e5")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Value" "Pulse_W3000"
+		(at 0 0 0)
+		(layer "F.Fab")
+		(uuid "42094137-2e88-4542-ba37-dd07f05fc432")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(uuid "fd1a64ed-6075-4e92-96a1-faff4b5f8105")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "97e7572a-07c9-4803-b67a-b6452e6330e7")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(attr smd)
+	(duplicate_pad_numbers_are_jumpers no)
+	(fp_rect
+		(start -4.15 -1.05)
+		(end 4.15 1.05)
+		(stroke
+			(width 0.05)
+			(type default)
+		)
+		(fill no)
+		(layer "F.CrtYd")
+		(uuid "7f447e1c-2c3d-40ef-b72b-ed084ee79b23")
+	)
+	(fp_rect
+		(start -3.5 -0.8)
+		(end 3.5 0.8)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(fill no)
+		(layer "F.Fab")
+		(uuid "96aba923-db18-46b7-b843-55158a3cdf2e")
+	)
+	(pad "1" smd rect
+		(at -3.3 0)
+		(size 1.2 1.6)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "798f67a9-347e-4051-9122-a405350a5699")
+	)
+	(pad "2" smd rect
+		(at 3.3 0)
+		(size 1.2 1.6)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "4d4ea527-6090-4134-955c-77d61fb9788b")
+	)
+	(embedded_fonts no)
+)

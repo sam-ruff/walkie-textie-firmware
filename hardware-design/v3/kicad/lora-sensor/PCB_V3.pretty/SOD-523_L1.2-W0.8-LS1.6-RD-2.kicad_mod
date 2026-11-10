@@ -1,0 +1,98 @@
+(footprint "SOD-523_L1.2-W0.8-LS1.6-RD-2"
+	(version 20260206)
+	(generator "pcbnew")
+	(generator_version "10.0")
+	(layer "F.Cu")
+	(descr "Land pattern as delivered in the PCB_V3 drop (EasyEDA package of the same name)")
+	(property "Reference" "REF**"
+		(at 0 -1.148 0)
+		(layer "F.SilkS")
+		(uuid "b9b19a61-db8b-4698-935a-535d70f9592d")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.13)
+			)
+		)
+	)
+	(property "Value" "SOD-523_L1.2-W0.8-LS1.6-RD-2"
+		(at 0 1.152 0)
+		(layer "F.Fab")
+		(uuid "a5cec7dc-b93d-418c-9320-4b77cce60938")
+		(effects
+			(font
+				(size 0.5 0.5)
+				(thickness 0.08)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "2738e696-9e0b-4360-a93b-69a2db395fd5")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "27b3a6ec-d0cd-4119-a58c-8fe64f0481eb")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(attr smd)
+	(duplicate_pad_numbers_are_jumpers no)
+	(fp_line
+		(start -1.363 -0.25)
+		(end -1.363 0.25)
+		(stroke
+			(width 0.15)
+			(type default)
+		)
+		(layer "F.SilkS")
+		(uuid "10e67039-be4d-4303-ac2f-ed78b5859744")
+	)
+	(fp_rect
+		(start -1.21 -0.4)
+		(end 1.21 0.4)
+		(stroke
+			(width 0.05)
+			(type default)
+		)
+		(fill no)
+		(layer "F.CrtYd")
+		(uuid "975e0399-a337-4953-af6a-c28297cbab06")
+	)
+	(fp_rect
+		(start -1.063 -0.248)
+		(end 1.057 0.252)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(fill no)
+		(layer "F.Fab")
+		(uuid "15f4f5a0-2739-495a-8388-78e7561cea84")
+	)
+	(pad "1" smd rect
+		(at -0.713 0.002)
+		(size 0.7 0.5)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "61a8b9a0-b157-498f-b316-599654124082")
+	)
+	(pad "2" smd rect
+		(at 0.707 0.002)
+		(size 0.7 0.5)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "6ccb7c7e-43de-44ca-a5c0-842a7372154c")
+	)
+	(embedded_fonts no)
+)
