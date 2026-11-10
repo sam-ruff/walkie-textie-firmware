@@ -4,6 +4,8 @@
 
 pub mod admin;
 pub mod ble;
+#[cfg(feature = "factory-test")]
+pub mod factory_test;
 pub mod led;
 pub mod lora;
 pub mod serial;

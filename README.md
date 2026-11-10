@@ -47,6 +47,25 @@ Release build:
 cargo +esp build --features embedded --release -Zbuild-std=core,alloc
 ```
 
+### Factory test build
+
+Radio compliance measurements need the transmitter held on, or a steady run
+of identical packets, which normal traffic never gives. Adding the
+`factory-test` feature builds firmware that can do both. Never ship that
+build.
+
+```bash
+cargo +esp build --features embedded,factory-test --release -Zbuild-std=core,alloc
+```
+
+Type one character into the debug serial port: `c` holds an unmodulated
+carrier, `m` holds continuous LoRa modulation, `p` sends a 64-byte test
+packet every second, `s` stops. All three use the configured frequency and
+power. The build also advertises over Bluetooth every 20 ms. Its host tests
+run with
+`cargo test --target x86_64-unknown-linux-gnu --features host-test,factory-test`.
+It has not been run on a board yet.
+
 ### Flash
 
 ```bash

@@ -76,6 +76,9 @@ opt-level = 1
 
 [features]
 default = []
+# Factory test mode for radio type-approval measurements: commands on the debug
+# serial port hold the transmitter on. Never enable it in firmware that ships.
+factory-test = []
 # Host-side testing of the LoRa driver without the esp-hal toolchain.
 # Pulls in embassy-time's mock time driver plus the embedded-hal traits so the
 # driver can be driven by a recording SPI/pin mock on the host target.

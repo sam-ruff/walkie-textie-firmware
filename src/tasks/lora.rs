@@ -19,12 +19,23 @@ use super::LedSender;
 /// fully idle; it is no longer the command-response latency.
 const RX_POLL_INTERVAL_MS: u32 = 500;
 
+/// What the LoRa task needs from its radio. A factory test build also needs
+/// to hold the transmitter on.
+#[cfg(not(feature = "factory-test"))]
+pub trait TaskRadio: LoraRadio {}
+#[cfg(not(feature = "factory-test"))]
+impl<R: LoraRadio> TaskRadio for R {}
+#[cfg(feature = "factory-test")]
+pub trait TaskRadio: LoraRadio + crate::lora::traits::TestTransmitter {}
+#[cfg(feature = "factory-test")]
+impl<R: LoraRadio + crate::lora::traits::TestTransmitter> TaskRadio for R {}
+
 /// Task that handles LoRa operations with background listening
 ///
 /// Waits concurrently on the radio (RX) and the command channel: whichever is
 /// ready first wins, so an incoming host command is dispatched immediately
 /// instead of after the RX poll, and the radio is listening whenever idle.
-pub async fn lora_task<R: LoraRadio>(
+pub async fn lora_task<R: TaskRadio>(
     mut radio: R,
     command_receiver: CommandReceiver,
     led_sender: LedSender,
@@ -44,6 +55,13 @@ pub async fn lora_task<R: LoraRadio>(
     let mut arm_failure_logged = false;
 
     loop {
+        // A test command is picked up within one RX poll interval. Test
+        // signals are then sent until a stop arrives.
+        #[cfg(feature = "factory-test")]
+        if let Ok(command) = super::factory_test::TEST_CHANNEL.try_receive() {
+            super::factory_test::run_until_stopped(&mut radio, command).await;
+        }
+
         // Make sure the radio is listening before waiting. Done OUTSIDE the
         // select below because arming talks SPI and must not be cancelled.
         match radio.arm_receive().await {

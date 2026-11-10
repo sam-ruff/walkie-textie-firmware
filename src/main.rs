@@ -223,7 +223,11 @@ async fn async_main(
 
     // Split CDC classes into sender/receiver and wrap for embedded_io_async
     let (data_tx, data_rx) = data_cdc.split();
-    let (debug_tx, _debug_rx) = debug_cdc.split();
+    #[cfg(not(feature = "factory-test"))]
+    let (debug_tx, _) = debug_cdc.split();
+    // A factory test build takes its commands from the debug port.
+    #[cfg(feature = "factory-test")]
+    let (debug_tx, debug_rx) = debug_cdc.split();
     let data_reader = usb::CdcReader::new(data_rx);
     let data_writer = usb::CdcWriter::new(data_tx);
 
@@ -236,6 +240,8 @@ async fn async_main(
 
     // Spawn debug writer task
     spawner.spawn(debug_writer_wrapper(debug_tx).expect("task pool exhausted"));
+    #[cfg(feature = "factory-test")]
+    spawner.spawn(test_command_wrapper(debug_rx).expect("task pool exhausted"));
 
     // Log startup message
     debug!("Walkie-Textie v{}.{}.{} starting...",
@@ -279,6 +285,13 @@ async fn serial_writer_wrapper(writer: usb::CdcWriter<'static, UsbDriver>) {
 #[embassy_executor::task]
 async fn debug_writer_wrapper(debug_tx: embassy_usb::class::cdc_acm::Sender<'static, UsbDriver>) {
     debug::debug_writer_task(debug_tx).await;
+}
+
+/// Wrapper task for factory test commands on the debug port
+#[cfg(feature = "factory-test")]
+#[embassy_executor::task]
+async fn test_command_wrapper(debug_rx: embassy_usb::class::cdc_acm::Receiver<'static, UsbDriver>) {
+    tasks::factory_test::test_command_task(debug_rx).await;
 }
 
 /// Wrapper task for admin commands (reboot, etc.)

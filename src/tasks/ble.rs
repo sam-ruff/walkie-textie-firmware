@@ -135,9 +135,15 @@ where
 
         // Advertise fast (default is 160 ms) so a central discovers the radio
         // quickly and a flaky GATT connect has more attempts to land.
+        #[cfg(not(feature = "factory-test"))]
+        let (interval_min, interval_max) = (Duration::from_millis(30), Duration::from_millis(60));
+        // A factory test build advertises at the 20 ms minimum, the busiest
+        // the 2.4 GHz radio gets, for the Bluetooth measurements.
+        #[cfg(feature = "factory-test")]
+        let (interval_min, interval_max) = (Duration::from_millis(20), Duration::from_millis(20));
         let adv_params = AdvertisementParameters {
-            interval_min: Duration::from_millis(30),
-            interval_max: Duration::from_millis(60),
+            interval_min,
+            interval_max,
             ..Default::default()
         };
 

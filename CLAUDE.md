@@ -18,6 +18,20 @@ ESP32-S3 + WIO-SX1262 LoRa firmware (Rust/Embassy). The PCB design lives in
   (found and hardware-verified on the LoRaMqttHub fork, which shares this
   file).
 
+## Factory test build
+
+`--features embedded,factory-test` builds firmware that sends the test
+signals the radio compliance measurements need. `c`, `m`, `p` and `s` on the
+debug serial port start a carrier, start continuous LoRa modulation, start
+64-byte test packets a second apart and stop (`src/tasks/factory_test.rs`,
+`src/lora/test_mode.rs`, and the `TestTransmitter` impl in
+`src/lora/driver.rs`). BLE advertises every 20 ms in that build. Never ship
+it. It was written on 10 November 2026 with host tests
+(`--features host-test,factory-test`) and builds for the ESP32-S3, but no
+board was attached, so it has never keyed a real transmitter: run it on a
+board with a spectrum analyser before relying on it. How it is used is in
+`hardware-design/v3/kicad/CE_TESTING.md`.
+
 ## LoRa bandwidth is 125 kHz, changed on 10 November 2026
 
 `src/config.rs` used to set a 250 kHz LoRa bandwidth with SF11 as the default,

@@ -107,6 +107,17 @@ pub trait LoraRadio {
     fn set_standby(&mut self) -> impl Future<Output = Result<(), LoraError>>;
 }
 
+/// A radio whose transmitter can be held on for type-approval measurements.
+#[cfg(feature = "factory-test")]
+pub trait TestTransmitter {
+    /// Transmit `signal` at the configured frequency and power until
+    /// `LoraRadio::set_standby` is called.
+    fn hold_transmitter(
+        &mut self,
+        signal: crate::lora::test_mode::TestSignal,
+    ) -> impl Future<Output = Result<(), LoraError>>;
+}
+
 #[cfg(test)]
 pub mod mock {
     //! Mock LoRa radio for testing

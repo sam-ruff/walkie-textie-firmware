@@ -40,6 +40,10 @@ mod cmd {
     pub const GET_IRQ_STATUS: u8 = 0x12;
     pub const CLEAR_IRQ_STATUS: u8 = 0x02;
     pub const SET_DIO_IRQ_PARAMS: u8 = 0x08;
+    #[cfg(feature = "factory-test")]
+    pub const SET_TX_CONTINUOUS_WAVE: u8 = 0xD1;
+    #[cfg(feature = "factory-test")]
+    pub const SET_TX_INFINITE_PREAMBLE: u8 = 0xD2;
 }
 
 /// SX1262 register addresses
@@ -754,6 +758,38 @@ where
     }
 }
 
+#[cfg(feature = "factory-test")]
+impl<Spi, Nss, Dio1, Nrst, Busy> crate::lora::traits::TestTransmitter
+    for Sx1262Driver<Spi, Nss, Dio1, Nrst, Busy>
+where
+    Spi: SpiBus,
+    Nss: OutputPin,
+    Dio1: InputPin + Wait,
+    Nrst: OutputPin,
+    Busy: InputPin,
+{
+    async fn hold_transmitter(
+        &mut self,
+        signal: crate::lora::test_mode::TestSignal,
+    ) -> Result<(), LoraError> {
+        use crate::lora::test_mode::TestSignal;
+
+        if !self.initialised {
+            return Err(LoraError::NotInitialised);
+        }
+
+        // Both modes start from standby and use the frequency, power and
+        // modulation already set by init or configure. Standby also clears
+        // in_continuous_rx, so arm_receive re-arms RX once the test stops.
+        self.set_standby_internal().await?;
+        let opcode = match signal {
+            TestSignal::Carrier => cmd::SET_TX_CONTINUOUS_WAVE,
+            TestSignal::Modulated => cmd::SET_TX_INFINITE_PREAMBLE,
+        };
+        self.write_command(opcode, &[]).await
+    }
+}
+
 #[cfg(all(test, feature = "host-test"))]
 mod host_tests {
     //! Host-side tests that drive the real driver against a recording SPI bus.
@@ -1091,6 +1127,81 @@ mod host_tests {
         assert!(driver.in_continuous_rx);
         let rx_after = writes.borrow().iter().filter(|w| w.first() == Some(&cmd::SET_RX)).count();
         assert_eq!(rx_after, rx_before + 1, "arm_receive must re-issue SetRx");
+    }
+
+    #[cfg(feature = "factory-test")]
+    mod factory_test {
+        use super::*;
+        use crate::lora::test_mode::TestSignal;
+        use crate::lora::traits::TestTransmitter;
+
+        /// Opcodes written after the given index, in order.
+        fn opcodes_after(writes: &[StdVec<u8>], start: usize) -> StdVec<u8> {
+            writes[start..].iter().filter_map(|w| w.first().copied()).collect()
+        }
+
+        #[test]
+        fn carrier_goes_to_standby_then_starts_continuous_wave() {
+            embassy_time::MockDriver::get().reset();
+            let writes = Rc::new(RefCell::new(StdVec::new()));
+            let mut driver = build_driver(writes.clone());
+            run(driver.init()).expect("init should succeed");
+            let before = writes.borrow().len();
+
+            run(driver.hold_transmitter(TestSignal::Carrier)).expect("carrier should start");
+
+            assert_eq!(
+                opcodes_after(&writes.borrow(), before),
+                [cmd::SET_STANDBY, cmd::SET_TX_CONTINUOUS_WAVE],
+                "the carrier must start from standby with nothing in between"
+            );
+            assert_eq!(writes.borrow().last().map(StdVec::len), Some(1), "SetTxContinuousWave takes no parameters");
+        }
+
+        #[test]
+        fn modulated_goes_to_standby_then_starts_infinite_preamble() {
+            embassy_time::MockDriver::get().reset();
+            let writes = Rc::new(RefCell::new(StdVec::new()));
+            let mut driver = build_driver(writes.clone());
+            run(driver.init()).expect("init should succeed");
+            let before = writes.borrow().len();
+
+            run(driver.hold_transmitter(TestSignal::Modulated)).expect("modulation should start");
+
+            assert_eq!(
+                opcodes_after(&writes.borrow(), before),
+                [cmd::SET_STANDBY, cmd::SET_TX_INFINITE_PREAMBLE]
+            );
+        }
+
+        #[test]
+        fn holding_the_transmitter_before_init_is_refused_without_spi_traffic() {
+            embassy_time::MockDriver::get().reset();
+            let writes = Rc::new(RefCell::new(StdVec::new()));
+            let mut driver = build_driver(writes.clone());
+
+            let result = run(driver.hold_transmitter(TestSignal::Carrier));
+
+            assert_eq!(result, Err(LoraError::NotInitialised));
+            assert!(writes.borrow().is_empty(), "an uninitialised radio must not be keyed");
+        }
+
+        #[test]
+        fn receive_is_rearmed_after_the_transmitter_is_released() {
+            embassy_time::MockDriver::get().reset();
+            let writes = Rc::new(RefCell::new(StdVec::new()));
+            let mut driver = build_driver(writes.clone());
+            run(driver.init()).expect("init should succeed");
+
+            run(driver.hold_transmitter(TestSignal::Modulated)).expect("modulation should start");
+            assert!(!driver.in_continuous_rx, "the radio is transmitting, not listening");
+            run(driver.set_standby()).expect("standby should succeed");
+            let rx_before = writes.borrow().iter().filter(|w| w.first() == Some(&cmd::SET_RX)).count();
+            run(driver.arm_receive()).expect("arm_receive should succeed");
+            let rx_after = writes.borrow().iter().filter(|w| w.first() == Some(&cmd::SET_RX)).count();
+
+            assert_eq!(rx_after, rx_before + 1, "normal reception must resume after a test");
+        }
     }
 
     #[test]
