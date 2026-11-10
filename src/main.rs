@@ -96,12 +96,15 @@ fn main() -> ! {
     let dio1 = Input::new(peripherals.GPIO39, InputConfig::default().with_pull(Pull::Down));
     let nrst = Output::new(peripherals.GPIO42, Level::High, OutputConfig::default());
     let busy = Input::new(peripherals.GPIO40, InputConfig::default().with_pull(Pull::Down));
+    // RF_SW of the LoRa module: low until the driver starts the receiver
+    let rx_enable = Output::new(peripherals.GPIO38, Level::Low, OutputConfig::default());
 
     let lora_pins = Sx1262Pins {
         nss,
         dio1,
         nrst,
         busy,
+        rx_enable,
     };
 
     // Create LoRa driver
@@ -209,6 +212,7 @@ async fn async_main(
         Input<'static>,
         Output<'static>,
         Input<'static>,
+        Output<'static>,
     >,
     led: Output<'static>,
     ble_controller: BleController,
@@ -321,6 +325,7 @@ async fn lora_wrapper(
         Input<'static>,
         Output<'static>,
         Input<'static>,
+        Output<'static>,
     >,
     command_receiver: CommandReceiver,
     led_sender: LedSender,

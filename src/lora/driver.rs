@@ -85,51 +85,59 @@ mod irq {
 }
 
 /// Control pins for SX1262
-pub struct Sx1262Pins<Nss, Dio1, Nrst, Busy> {
+pub struct Sx1262Pins<Nss, Dio1, Nrst, Busy, RxEnable> {
     pub nss: Nss,
     pub dio1: Dio1,
     pub nrst: Nrst,
     pub busy: Busy,
+    /// Receive enable of the module's antenna switch (RF_SW on the
+    /// Wio-SX1262): high to receive, low at all other times. DIO2 selects
+    /// the transmit path.
+    pub rx_enable: RxEnable,
 }
 
 /// SX1262 LoRa driver
 ///
 /// Implements the LoraRadio trait using dependency injection for SPI and GPIO pins.
 /// Uses SpiBus trait with manual NSS control.
-pub struct Sx1262Driver<Spi, Nss, Dio1, Nrst, Busy>
+pub struct Sx1262Driver<Spi, Nss, Dio1, Nrst, Busy, RxEnable>
 where
     Spi: SpiBus,
     Nss: OutputPin,
     Dio1: InputPin + Wait,
     Nrst: OutputPin,
     Busy: InputPin,
+    RxEnable: OutputPin,
 {
     spi: Spi,
     nss: Nss,
     dio1: Dio1,
     nrst: Nrst,
     busy: Busy,
+    rx_enable: RxEnable,
     initialised: bool,
     in_continuous_rx: bool,
     config: Option<LoraConfig>,
 }
 
-impl<Spi, Nss, Dio1, Nrst, Busy> Sx1262Driver<Spi, Nss, Dio1, Nrst, Busy>
+impl<Spi, Nss, Dio1, Nrst, Busy, RxEnable> Sx1262Driver<Spi, Nss, Dio1, Nrst, Busy, RxEnable>
 where
     Spi: SpiBus,
     Nss: OutputPin,
     Dio1: InputPin + Wait,
     Nrst: OutputPin,
     Busy: InputPin,
+    RxEnable: OutputPin,
 {
     /// Create a new SX1262 driver
-    pub fn new(spi: Spi, pins: Sx1262Pins<Nss, Dio1, Nrst, Busy>) -> Self {
+    pub fn new(spi: Spi, pins: Sx1262Pins<Nss, Dio1, Nrst, Busy, RxEnable>) -> Self {
         Self {
             spi,
             nss: pins.nss,
             dio1: pins.dio1,
             nrst: pins.nrst,
             busy: pins.busy,
+            rx_enable: pins.rx_enable,
             initialised: false,
             in_continuous_rx: false,
             config: None,
@@ -321,9 +329,12 @@ where
     ///
     /// Clears `in_continuous_rx` so every path that drops the radio out of
     /// RX (transmit, configure, set_standby) leaves the flag truthful and
-    /// the next `arm_receive` re-arms the receiver.
+    /// the next `arm_receive` re-arms the receiver. The receive path of the
+    /// antenna switch goes off with it, so it is off whenever the radio
+    /// transmits or idles.
     async fn set_standby_internal(&mut self) -> Result<(), LoraError> {
         self.in_continuous_rx = false;
+        let _ = self.rx_enable.set_low();
         self.write_command(cmd::SET_STANDBY, &[standby::STDBY_RC])
             .await
     }
@@ -561,6 +572,9 @@ where
             .await?;
         self.clear_irq(0xFFFF).await?;
 
+        // Switch the antenna to the receiver before it starts listening
+        let _ = self.rx_enable.set_high();
+
         // Start continuous RX (timeout = 0xFFFFFF means continuous)
         let timeout_bytes = [0xFF, 0xFF, 0xFF];
         self.write_command(cmd::SET_RX, &timeout_bytes).await?;
@@ -570,13 +584,15 @@ where
     }
 }
 
-impl<Spi, Nss, Dio1, Nrst, Busy> LoraRadio for Sx1262Driver<Spi, Nss, Dio1, Nrst, Busy>
+impl<Spi, Nss, Dio1, Nrst, Busy, RxEnable> LoraRadio
+    for Sx1262Driver<Spi, Nss, Dio1, Nrst, Busy, RxEnable>
 where
     Spi: SpiBus,
     Nss: OutputPin,
     Dio1: InputPin + Wait,
     Nrst: OutputPin,
     Busy: InputPin,
+    RxEnable: OutputPin,
 {
     async fn init(&mut self) -> Result<(), LoraError> {
         // Reset the radio
@@ -759,14 +775,15 @@ where
 }
 
 #[cfg(feature = "factory-test")]
-impl<Spi, Nss, Dio1, Nrst, Busy> crate::lora::traits::TestTransmitter
-    for Sx1262Driver<Spi, Nss, Dio1, Nrst, Busy>
+impl<Spi, Nss, Dio1, Nrst, Busy, RxEnable> crate::lora::traits::TestTransmitter
+    for Sx1262Driver<Spi, Nss, Dio1, Nrst, Busy, RxEnable>
 where
     Spi: SpiBus,
     Nss: OutputPin,
     Dio1: InputPin + Wait,
     Nrst: OutputPin,
     Busy: InputPin,
+    RxEnable: OutputPin,
 {
     async fn hold_transmitter(
         &mut self,
@@ -869,6 +886,45 @@ mod host_tests {
         }
     }
 
+    /// Output pin that records each level it is driven to, with the number
+    /// of SPI buffers sent before the change.
+    struct RecordingOut {
+        writes: Rc<RefCell<StdVec<StdVec<u8>>>>,
+        changes: StdVec<(usize, bool)>,
+    }
+    impl RecordingOut {
+        fn record(&mut self, high: bool) {
+            let sent = self.writes.borrow().len();
+            self.changes.push((sent, high));
+        }
+
+        /// Whether the pin was high when SPI buffer number `index` was sent.
+        fn high_at(&self, index: usize) -> Option<bool> {
+            self.changes
+                .iter()
+                .rev()
+                .find(|(sent, _)| *sent <= index)
+                .map(|(_, high)| *high)
+        }
+
+        fn high(&self) -> Option<bool> {
+            self.changes.last().map(|(_, high)| *high)
+        }
+    }
+    impl embedded_hal::digital::ErrorType for RecordingOut {
+        type Error = MockError;
+    }
+    impl embedded_hal::digital::OutputPin for RecordingOut {
+        fn set_low(&mut self) -> Result<(), MockError> {
+            self.record(false);
+            Ok(())
+        }
+        fn set_high(&mut self) -> Result<(), MockError> {
+            self.record(true);
+            Ok(())
+        }
+    }
+
     /// Input pin that always reads low (BUSY released, no IRQ pending).
     struct LowPin;
     impl embedded_hal::digital::ErrorType for LowPin {
@@ -925,9 +981,13 @@ mod host_tests {
         }
     }
 
-    fn build_driver(
-        writes: Rc<RefCell<StdVec<StdVec<u8>>>>,
-    ) -> Sx1262Driver<RecordingSpi, NoopOut, LowPin, NoopOut, LowPin> {
+    type TestDriver = Sx1262Driver<RecordingSpi, NoopOut, LowPin, NoopOut, LowPin, RecordingOut>;
+
+    fn build_driver(writes: Rc<RefCell<StdVec<StdVec<u8>>>>) -> TestDriver {
+        let rx_enable = RecordingOut {
+            writes: writes.clone(),
+            changes: StdVec::new(),
+        };
         let spi = RecordingSpi { writes };
         Sx1262Driver::new(
             spi,
@@ -936,8 +996,42 @@ mod host_tests {
                 dio1: LowPin,
                 nrst: NoopOut,
                 busy: LowPin,
+                rx_enable,
             },
         )
+    }
+
+    /// The level RF_SW must hold when a command that changes the radio's
+    /// mode is sent: high to receive, low to idle and to transmit.
+    fn receive_path_for(opcode: u8) -> Option<bool> {
+        match opcode {
+            cmd::SET_RX => Some(true),
+            cmd::SET_STANDBY | cmd::SET_TX => Some(false),
+            #[cfg(feature = "factory-test")]
+            cmd::SET_TX_CONTINUOUS_WAVE | cmd::SET_TX_INFINITE_PREAMBLE => Some(false),
+            _ => None,
+        }
+    }
+
+    /// Check RF_SW against every mode command sent so far and return the
+    /// opcodes of those commands.
+    fn assert_receive_path_follows_mode(driver: &TestDriver, writes: &[StdVec<u8>]) -> StdVec<u8> {
+        let mut modes = StdVec::new();
+        for (index, write) in writes.iter().enumerate() {
+            let Some(opcode) = write.first().copied() else {
+                continue;
+            };
+            let Some(expected) = receive_path_for(opcode) else {
+                continue;
+            };
+            assert_eq!(
+                driver.rx_enable.high_at(index),
+                Some(expected),
+                "RF_SW when opcode {opcode:#04x} was sent as SPI buffer {index}"
+            );
+            modes.push(opcode);
+        }
+        modes
     }
 
     fn first_index(writes: &[StdVec<u8>], opcode: u8) -> Option<usize> {
@@ -1129,6 +1223,74 @@ mod host_tests {
         assert_eq!(rx_after, rx_before + 1, "arm_receive must re-issue SetRx");
     }
 
+    #[test]
+    fn receive_path_is_enabled_only_once_init_starts_the_receiver() {
+        embassy_time::MockDriver::get().reset();
+        let writes = Rc::new(RefCell::new(StdVec::new()));
+        let mut driver = build_driver(writes.clone());
+
+        run(driver.init()).expect("init should succeed");
+
+        let writes = writes.borrow();
+        let modes = assert_receive_path_follows_mode(&driver, &writes);
+        assert_eq!(modes.last(), Some(&cmd::SET_RX), "init ends in receive");
+        assert_eq!(driver.rx_enable.high(), Some(true), "RF_SW stays high while listening");
+
+        let set_rx = first_index(&writes, cmd::SET_RX).expect("SetRx issued during init");
+        let first_high = driver.rx_enable.changes.iter().find(|(_, high)| *high);
+        assert_eq!(
+            first_high,
+            Some(&(set_rx, true)),
+            "RF_SW must stay low through reset and calibration, and rise just before SetRx"
+        );
+    }
+
+    #[test]
+    fn receive_path_is_off_from_transmit_until_receive_is_rearmed() {
+        embassy_time::MockDriver::get().reset();
+        let writes = Rc::new(RefCell::new(StdVec::new()));
+        let mut driver = build_driver(writes.clone());
+        run(driver.init()).expect("init should succeed");
+
+        // The mock DIO1 never fires, so the packet is keyed and then times out.
+        let result = run(driver.transmit(&[0x55u8; 16]));
+        assert_eq!(result, Err(LoraError::Timeout));
+
+        let modes = assert_receive_path_follows_mode(&driver, &writes.borrow());
+        assert!(modes.contains(&cmd::SET_TX), "the packet must reach SetTx");
+        assert_eq!(
+            driver.rx_enable.high(),
+            Some(false),
+            "RF_SW stays low after a transmit until receive is re-armed"
+        );
+
+        run(driver.arm_receive()).expect("arm_receive should succeed");
+        assert_receive_path_follows_mode(&driver, &writes.borrow());
+        assert_eq!(driver.rx_enable.high(), Some(true));
+    }
+
+    #[test]
+    fn receive_path_goes_off_in_standby_and_while_reconfiguring() {
+        embassy_time::MockDriver::get().reset();
+        let writes = Rc::new(RefCell::new(StdVec::new()));
+        let mut driver = build_driver(writes.clone());
+        run(driver.init()).expect("init should succeed");
+
+        run(driver.set_standby()).expect("standby should succeed");
+        assert_eq!(driver.rx_enable.high(), Some(false), "RF_SW is low while the radio idles");
+
+        run(driver.arm_receive()).expect("arm_receive should succeed");
+        assert_eq!(driver.rx_enable.high(), Some(true));
+
+        run(driver.configure(&LoraConfig::default())).expect("configure should succeed");
+        assert_eq!(
+            driver.rx_enable.high(),
+            Some(false),
+            "configure leaves the radio in standby, so RF_SW must be low"
+        );
+        assert_receive_path_follows_mode(&driver, &writes.borrow());
+    }
+
     #[cfg(feature = "factory-test")]
     mod factory_test {
         use super::*;
@@ -1201,6 +1363,32 @@ mod host_tests {
             let rx_after = writes.borrow().iter().filter(|w| w.first() == Some(&cmd::SET_RX)).count();
 
             assert_eq!(rx_after, rx_before + 1, "normal reception must resume after a test");
+        }
+
+        #[test]
+        fn receive_path_is_off_while_the_transmitter_is_held() {
+            for signal in [TestSignal::Carrier, TestSignal::Modulated] {
+                embassy_time::MockDriver::get().reset();
+                let writes = Rc::new(RefCell::new(StdVec::new()));
+                let mut driver = build_driver(writes.clone());
+                run(driver.init()).expect("init should succeed");
+
+                run(driver.hold_transmitter(signal)).expect("the test signal should start");
+
+                let modes = assert_receive_path_follows_mode(&driver, &writes.borrow());
+                assert!(
+                    matches!(
+                        modes.last(),
+                        Some(&cmd::SET_TX_CONTINUOUS_WAVE | &cmd::SET_TX_INFINITE_PREAMBLE)
+                    ),
+                    "the transmitter must be keyed"
+                );
+                assert_eq!(
+                    driver.rx_enable.high(),
+                    Some(false),
+                    "RF_SW stays low for as long as the test signal is on"
+                );
+            }
         }
     }
 
