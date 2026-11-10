@@ -577,7 +577,11 @@ where
 
         // Start continuous RX (timeout = 0xFFFFFF means continuous)
         let timeout_bytes = [0xFF, 0xFF, 0xFF];
-        self.write_command(cmd::SET_RX, &timeout_bytes).await?;
+        if let Err(error) = self.write_command(cmd::SET_RX, &timeout_bytes).await {
+            // The receiver never started, so its path goes off again
+            let _ = self.rx_enable.set_low();
+            return Err(error);
+        }
 
         self.in_continuous_rx = true;
         Ok(())
@@ -595,6 +599,10 @@ where
     RxEnable: OutputPin,
 {
     async fn init(&mut self) -> Result<(), LoraError> {
+        // Nothing listens until the receiver starts at the end of init
+        self.in_continuous_rx = false;
+        let _ = self.rx_enable.set_low();
+
         // Reset the radio
         self.reset().await?;
         self.wait_not_busy().await?;
@@ -815,13 +823,13 @@ mod host_tests {
 
     use super::*;
     use crate::lora::traits::LoraRadio;
-    use core::cell::RefCell;
+    use core::cell::{Cell, RefCell};
     use core::future::Future;
     use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
     use std::rc::Rc;
     use std::vec::Vec as StdVec;
 
-    /// Error type for the mocks (never actually returned).
+    /// Error type for the mocks.
     #[derive(Debug)]
     struct MockError;
 
@@ -837,10 +845,25 @@ mod host_tests {
         }
     }
 
-    /// SPI bus that records every outbound buffer (first byte is the opcode).
-    #[derive(Clone)]
+    /// SPI bus that records every outbound buffer that reaches the radio
+    /// (first byte is the opcode).
     struct RecordingSpi {
         writes: Rc<RefCell<StdVec<StdVec<u8>>>>,
+        /// The next buffer with this opcode fails and is not recorded.
+        fail_opcode: Cell<Option<u8>>,
+        /// What the radio answers to GetIrqStatus.
+        irq_status: Cell<u16>,
+    }
+
+    impl RecordingSpi {
+        fn send(&self, words: &[u8]) -> Result<(), MockError> {
+            if self.fail_opcode.get().is_some() && self.fail_opcode.get() == words.first().copied() {
+                self.fail_opcode.set(None);
+                return Err(MockError);
+            }
+            self.writes.borrow_mut().push(words.to_vec());
+            Ok(())
+        }
     }
 
     impl embedded_hal::spi::ErrorType for RecordingSpi {
@@ -853,13 +876,18 @@ mod host_tests {
         }
 
         async fn write(&mut self, words: &[u8]) -> Result<(), MockError> {
-            self.writes.borrow_mut().push(words.to_vec());
-            Ok(())
+            self.send(words)
         }
 
         async fn transfer(&mut self, read: &mut [u8], write: &[u8]) -> Result<(), MockError> {
-            self.writes.borrow_mut().push(write.to_vec());
+            self.send(write)?;
             read.iter_mut().for_each(|b| *b = 0);
+            // The status follows the opcode and one status byte.
+            if write.first() == Some(&cmd::GET_IRQ_STATUS) {
+                if let Some(answer) = read.get_mut(2..4) {
+                    answer.copy_from_slice(&self.irq_status.get().to_be_bytes());
+                }
+            }
             Ok(())
         }
 
@@ -925,21 +953,32 @@ mod host_tests {
         }
     }
 
-    /// Input pin that always reads low (BUSY released, no IRQ pending).
-    struct LowPin;
-    impl embedded_hal::digital::ErrorType for LowPin {
+    /// Input pin that reads low (BUSY released, no IRQ pending) until a
+    /// test sets it high (BUSY stuck, or DIO1 raised).
+    struct LevelPin {
+        high: Cell<bool>,
+    }
+    impl LevelPin {
+        fn low() -> Self {
+            Self { high: Cell::new(false) }
+        }
+    }
+    impl embedded_hal::digital::ErrorType for LevelPin {
         type Error = MockError;
     }
-    impl embedded_hal::digital::InputPin for LowPin {
+    impl embedded_hal::digital::InputPin for LevelPin {
         fn is_high(&mut self) -> Result<bool, MockError> {
-            Ok(false)
+            Ok(self.high.get())
         }
         fn is_low(&mut self) -> Result<bool, MockError> {
-            Ok(true)
+            Ok(!self.high.get())
         }
     }
-    impl embedded_hal_async::digital::Wait for LowPin {
+    impl embedded_hal_async::digital::Wait for LevelPin {
         async fn wait_for_high(&mut self) -> Result<(), MockError> {
+            if self.high.get() {
+                return Ok(());
+            }
             core::future::pending().await
         }
         async fn wait_for_low(&mut self) -> Result<(), MockError> {
@@ -981,21 +1020,26 @@ mod host_tests {
         }
     }
 
-    type TestDriver = Sx1262Driver<RecordingSpi, NoopOut, LowPin, NoopOut, LowPin, RecordingOut>;
+    type TestDriver =
+        Sx1262Driver<RecordingSpi, NoopOut, LevelPin, NoopOut, LevelPin, RecordingOut>;
 
     fn build_driver(writes: Rc<RefCell<StdVec<StdVec<u8>>>>) -> TestDriver {
         let rx_enable = RecordingOut {
             writes: writes.clone(),
             changes: StdVec::new(),
         };
-        let spi = RecordingSpi { writes };
+        let spi = RecordingSpi {
+            writes,
+            fail_opcode: Cell::new(None),
+            irq_status: Cell::new(0),
+        };
         Sx1262Driver::new(
             spi,
             Sx1262Pins {
                 nss: NoopOut,
-                dio1: LowPin,
+                dio1: LevelPin::low(),
                 nrst: NoopOut,
-                busy: LowPin,
+                busy: LevelPin::low(),
                 rx_enable,
             },
         )
@@ -1287,6 +1331,107 @@ mod host_tests {
             driver.rx_enable.high(),
             Some(false),
             "configure leaves the radio in standby, so RF_SW must be low"
+        );
+        assert_receive_path_follows_mode(&driver, &writes.borrow());
+    }
+
+    #[test]
+    fn receive_path_stays_off_after_a_completed_transmit() {
+        embassy_time::MockDriver::get().reset();
+        let writes = Rc::new(RefCell::new(StdVec::new()));
+        let mut driver = build_driver(writes.clone());
+        run(driver.init()).expect("init should succeed");
+
+        // The radio raises DIO1 and reports TX done.
+        driver.dio1.high.set(true);
+        driver.spi.irq_status.set(irq::TX_DONE);
+        run(driver.transmit(&[0x55u8; 16])).expect("the packet should be sent");
+
+        let modes = assert_receive_path_follows_mode(&driver, &writes.borrow());
+        assert!(modes.contains(&cmd::SET_TX), "the packet must reach SetTx");
+        assert_eq!(
+            driver.rx_enable.high(),
+            Some(false),
+            "RF_SW stays low once the packet has gone, until receive is re-armed"
+        );
+
+        driver.dio1.high.set(false);
+        run(driver.arm_receive()).expect("arm_receive should succeed");
+        assert_eq!(driver.rx_enable.high(), Some(true));
+    }
+
+    #[test]
+    fn receive_path_goes_off_again_when_the_receiver_fails_to_start() {
+        embassy_time::MockDriver::get().reset();
+        let writes = Rc::new(RefCell::new(StdVec::new()));
+        let mut driver = build_driver(writes.clone());
+        run(driver.init()).expect("init should succeed");
+        run(driver.set_standby()).expect("standby should succeed");
+
+        driver.spi.fail_opcode.set(Some(cmd::SET_RX));
+        let result = run(driver.arm_receive());
+
+        assert_eq!(result, Err(LoraError::SpiError));
+        assert!(!driver.in_continuous_rx, "the radio is not listening");
+        assert_eq!(
+            driver.rx_enable.high(),
+            Some(false),
+            "RF_SW must not stay high for a receiver that never started"
+        );
+
+        run(driver.arm_receive()).expect("the next attempt should succeed");
+        assert!(driver.in_continuous_rx);
+        assert_eq!(driver.rx_enable.high(), Some(true));
+    }
+
+    #[test]
+    fn receive_path_stays_off_when_the_transmitter_fails_to_start() {
+        embassy_time::MockDriver::get().reset();
+        let writes = Rc::new(RefCell::new(StdVec::new()));
+        let mut driver = build_driver(writes.clone());
+        run(driver.init()).expect("init should succeed");
+
+        driver.spi.fail_opcode.set(Some(cmd::SET_TX));
+        let result = run(driver.transmit(&[0x55u8; 16]));
+
+        assert_eq!(result, Err(LoraError::SpiError));
+        assert_eq!(driver.rx_enable.high(), Some(false));
+        assert_receive_path_follows_mode(&driver, &writes.borrow());
+    }
+
+    #[test]
+    fn receive_path_is_off_when_init_cannot_reach_the_radio() {
+        embassy_time::MockDriver::get().reset();
+        let writes = Rc::new(RefCell::new(StdVec::new()));
+        let mut driver = build_driver(writes.clone());
+
+        // BUSY never releases, as with no radio fitted.
+        driver.busy.high.set(true);
+        let result = run(driver.init());
+
+        assert_eq!(result, Err(LoraError::BusyTimeout));
+        assert!(writes.borrow().is_empty(), "nothing can be sent while BUSY is high");
+        assert_eq!(
+            driver.rx_enable.high(),
+            Some(false),
+            "RF_SW is driven low even when the radio never answers"
+        );
+    }
+
+    #[test]
+    fn receive_path_goes_off_when_init_fails_at_the_last_step() {
+        embassy_time::MockDriver::get().reset();
+        let writes = Rc::new(RefCell::new(StdVec::new()));
+        let mut driver = build_driver(writes.clone());
+
+        driver.spi.fail_opcode.set(Some(cmd::SET_RX));
+        let result = run(driver.init());
+
+        assert_eq!(result, Err(LoraError::SpiError));
+        assert_eq!(
+            driver.rx_enable.high(),
+            Some(false),
+            "nothing retries a failed init, so RF_SW must not be left high"
         );
         assert_receive_path_follows_mode(&driver, &writes.borrow());
     }

@@ -59,10 +59,10 @@ cargo +esp build --features embedded,factory-test --release -Zbuild-std=core,all
 ```
 
 Type one character into the debug serial port: `c` holds an unmodulated
-carrier, `m` holds continuous LoRa modulation, `p` sends a 64-byte test
-packet every second, `s` stops. All three use the configured frequency and
-power. The build also advertises over Bluetooth every 20 ms. Its host tests
-run with
+carrier, `m` holds continuous LoRa modulation, `p` sends 64-byte test
+packets with a second of silence after each, `s` stops. All three use the
+configured frequency and power. The build also advertises over Bluetooth
+every 20 ms. Its host tests run with
 `cargo test --target x86_64-unknown-linux-gnu --features host-test,factory-test`.
 It has not been run on a board yet.
 
@@ -278,9 +278,14 @@ The tests verify:
 | GPIO39 | LoRa DIO1 (IRQ)  |
 | GPIO42 | LoRa NRST        |
 | GPIO40 | LoRa BUSY        |
+| GPIO38 | LoRa RF_SW       |
 | GPIO48 | LED (active low) |
 
 TCXO voltage: 1.8V (configured via DIO3)
+
+RF_SW is the receive enable of the Wio-SX1262's antenna switch. The driver
+holds it high while the radio listens and low while it transmits or idles,
+and DIO2 selects the transmit path.
 
 ## Command Protocol
 
