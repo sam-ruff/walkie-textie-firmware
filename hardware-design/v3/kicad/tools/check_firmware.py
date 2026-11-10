@@ -103,7 +103,8 @@ def main():
     with open(model_path) as fh:
         board = Board(parts_module.resolve(json.load(fh)))
     with open(os.path.join(firmware_dir, "main.rs")) as fh:
-        used, led_on = firmware_pins(fh.read())
+        source = fh.read()
+    used, led_on = firmware_pins(source)
     with open(os.path.join(firmware_dir, "config.rs")) as fh:
         config = fh.read()
     pad_of = gpio_pads(symbols_dir)
@@ -143,8 +144,19 @@ def main():
 
     print("what the firmware relies on without driving a pin:")
     switch_net = board.net(RADIO, radio_pin["RF_SW"])
-    need(board.joins("R25", switch_net, "+3V3") and board.fitted("R25"),
-         "radio's RF switch enable (RF_SW) is pulled up to +3V3 by R25: the firmware never drives it")
+    switch_gpio = [gpio for gpio, pad in pad_of.items() if board.net(MCU, pad) == switch_net]
+    driven = any(re.search(rf"peripherals\.GPIO{gpio}\b", source) for gpio in switch_gpio)
+    need(board.joins("R25", switch_net, "+3V3") and board.fitted("R25") and len(switch_gpio) == 1,
+         f"the radio module's RF_SW pin is pulled up to +3V3 by R25 and reaches GPIO{switch_gpio[0] if switch_gpio else '?'}")
+    if driven:
+        print("      the firmware uses that pin, so what it drives there decides the module's antenna switch")
+    else:
+        # Seeed's datasheet for the module has RF_SW high to receive and low at other times. Its staff
+        # describe the pin as the /CTRL input of the module's antenna switch, with DIO2 on CTRL; on a
+        # switch of that kind a high level there leaves DIO2 alone in control. Neither is measured here.
+        print("      the firmware never drives that pin, so RF_SW is high all the time: the module's receive path is enabled,")
+        print("      and it stays high in transmit, where Seeed's datasheet has it low. See the README: this needs a")
+        print("      measurement of transmit power on the first board")
     need(board.net(RADIO, radio_pin["VCC"]) == "+3V3", "radio module is supplied from +3V3")
     boot = board.net(MCU, pad_of[0])
     need(board.joins("R6", boot, "+3V3") and board.joins("SW1", boot, "GND"), "GPIO0 (boot) has a pull-up and a button to ground")

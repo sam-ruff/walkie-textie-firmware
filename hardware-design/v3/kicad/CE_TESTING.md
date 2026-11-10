@@ -189,6 +189,14 @@ board.
 3. Read the conducted power and the harmonics at 1739 MHz and 2609 MHz. The
    Wio-SX1262 datasheet gives -45 dBm or better above 1 GHz. The limit in T4
    is -30 dBm, so a healthy module has 15 dB in hand before the antenna.
+4. Read the conducted power again with the module's RF_SW pin held low: tie
+   the end of R25 nearer the module to ground through 1 kohm while the
+   carrier is on. The board holds that pin high all the time, because the
+   firmware never drives GPIO38, and Seeed's datasheet for the module has it
+   low while transmitting. If the power is the same both ways, the pin's
+   level does not matter in transmit and nothing needs doing. If it is lower
+   as built, the firmware has to drive GPIO38 (high to receive, low
+   otherwise) before any of the tests below mean anything.
 
 Never transmit on a board from the antenna-test order. Its radio has no load.
 
@@ -275,11 +283,11 @@ criteria in the version of EN 301 489 you cite.
 
 Plugging USB in or pulling it out while the board runs from its battery can
 do the same. The power mux disconnects both supplies for some microseconds as
-it changes over, and three 22 uF capacitors feed the converter alone. With
-both radios transmitting from a battery under about 2.3 V, the model's worst
-case lets the converter stop, which takes the rail under 2.93 V. It is not
-part of any test in the plan, but note it if a test has you change the supply
-while the board runs.
+it changes over, and the capacitors on its output feed the converter alone.
+On a nearly flat battery, with a radio transmitting, the model's worst case
+lets the converter stop, which takes the rail under 2.93 V. It is not part of
+any test in the plan, but note it if a test has you change the supply while
+the board runs.
 
 ## The bench tests at J3
 
@@ -301,10 +309,19 @@ pads are in the path, so read levels at the far end of the cable with the
 analyser before each receiver test, as T11 says.
 
 For the supply extremes in T1, and for T9, put a bench supply on the battery
-connector in place of the cells, with USB unplugged. The bench-test board has
-R37 fitted, so it stays on. Connect the supply before switching it on: one
-that is already on rings with its leads when it is connected, and the mux
-allows 6 V. The brief gives the battery range as 2.0 to 3.6 V. For T9 start
+connector in place of the cells. The test commands arrive over USB, and USB
+power would take the board off the bench supply, because the mux passes
+whichever supply is the higher. So use a USB lead with its VBUS wire cut,
+which carries data and ground only, and check with a meter that C7 stays at
+0 V. The firmware does not sense VBUS, so its serial ports should still
+appear. If they do not, start the signal on USB power and then pull the plug.
+The board carries on from the bench supply, unless the change of supply
+resets it, which loses the test mode.
+
+The bench-test board has R37 fitted, so it stays on. Connect the supply
+before switching it on: one that is already on rings with its leads when it
+is connected, and the mux allows 6 V. The brief gives the battery range as
+2.0 to 3.6 V. For T9 start
 at 3.0 V and come down 0.3 V at a time. The mux is specified down to 1.6 V.
 The TPS631000 holds 3.3 V until its input falls below its lockout, 1.4 to
 1.5 V, and then stops, so expect the radio to send at full

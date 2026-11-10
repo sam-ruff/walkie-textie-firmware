@@ -60,9 +60,17 @@ MUX_OHMS = 0.037           # TPS2116 datasheet: its resistance when on, at 5 V
 USB_BULK_FARADS = 10e-6
 USB_UNIT_LOAD = 0.1
 RING_LEFT = 0.05           # volts of the ring that may be left when the switch turns on
-# Share of their marked value that the capacitors behind the switch keep at 5 V: mostly 22 uF, 25 V, X5R
-# 0805 parts at the bottom of their tolerance, hot or cold, less what 5 V across them takes.
+# Share of its marked value that a capacitor behind the switch keeps at 5 V, at the bottom of its
+# tolerance, hot or cold, less what 5 V across it takes: a part rated for 25 V or more, and one rated
+# for 6.3 V, which loses far more to the voltage.
 BEHIND_KEEPS = 0.45
+LOW_RATED_KEEPS = 0.24
+LOW_RATED_VOLTS = 10.0
+BATTERY_MOST = 3.6         # volts: two fresh lithium AA cells, the top of the brief's battery range
+# The diode from VBUS to the mux's output: its part, and its forward voltage at 10 A, which is more than
+# the lead can deliver. Its datasheet's curve has 1.2 V there at 25 degrees, and its limit at 1 A is
+# 0.1 V over the curve.
+CLAMP = {"part": "ES1D", "volts": 1.35}
 
 
 def pad_centres(board, ref):
@@ -205,7 +213,7 @@ def check_usb_input(all_parts):
     behind = usb["output_caps"] + usb["system_caps"]
     rate = usb_input.slew_rate(usb)
     amps = usb_input.marked_farads(behind) * rate * 1000
-    print(f"  behind it VBUS rises at {rate:.1f} V a millisecond, so nothing there sees a step: {names(behind)} charge at {amps * 1000:.0f} mA, "
+    print(f"  behind it VBUS rises at {rate:.2f} V a millisecond, so nothing there sees a step: {names(behind)} charge at {amps * 1000:.0f} mA, "
           f"where a USB port owes a device {USB_UNIT_LOAD * 1000:.0f} mA before it has asked for more")
     print(f"  {marked * 1e6:.1f} uF is straight across the plug, where USB 2.0 allows a device {USB_BULK_FARADS * 1e6:.0f} uF")
     if amps > USB_UNIT_LOAD:
@@ -213,21 +221,54 @@ def check_usb_input(all_parts):
     if marked > USB_BULK_FARADS:
         problems.append("more capacitance sits straight across the plug than USB 2.0 allows")
 
-    # The plug losing contact and making it again while the switch is on: the ring then reaches everything
-    # behind the switch. The switch turns off once its input is under its threshold, so the capacitors can
-    # be no lower than that when contact comes back.
+    return problems + check_contact_again(usb, ahead, behind)
+
+
+def kept_at_usb(capacitors):
+    """Farads that capacitors keep of their marked value with 5 V across them, at the worst case."""
+    return sum(farads(part["value"]) * (LOW_RATED_KEEPS if rated_volts(part["mpn"]) < LOW_RATED_VOLTS else BEHIND_KEEPS)
+               for part in capacitors)
+
+
+def check_contact_again(usb, ahead, behind):
+    """The plug losing contact and making it again while the switch is on, when the ring passes through it.
+
+    The switch turns off once its input is under its threshold, so what is behind it can be no lower than
+    that when contact comes back. There are two states. With USB selected, every capacitor on the mux's
+    output is behind the switch and damps the ring. With the battery selected, which the mux goes back to
+    as soon as VBUS is under the battery's voltage, only the capacitors on VBUS itself are.
+    """
+    problems = []
+    switch = usb["switch"]["ref"]
     _, off = usb_input.switch_thresholds(usb)
-    kept = (marked + usb_input.marked_farads(behind)) * BEHIND_KEEPS
+    kept = kept_at_usb(ahead + behind)
     again = max(hot_plug.remake_peak(metres, kept, off[0], SWITCH_OHMS + MUX_OHMS) for metres in hot_plug.LEAD_METRES)
-    clamp = max(usb_input.CLAMP_FROM[2], usb_input.CLAMP_TO[2])
-    print(f"the plug losing contact and making it again with {switch} on: the capacitors behind it are at {off[0]:.2f} V or more "
-          f"and keep {kept * 1e6:.0f} uF at the least")
-    print(f"  highest peak behind {switch}, modelled: {again:.2f} V; whatever the peak, {switch} holds its output down once its input passes "
-          f"{usb_input.CLAMP_FROM[0]} to {usb_input.CLAMP_FROM[2]} V, within {usb_input.CLAMP_SECONDS * 1e6:.0f} us; the parts there allow {SIX_VOLTS:.0f} V")
+    print(f"the plug losing contact and making it again with {switch} on: what is behind it is at {off[0]:.2f} V or more")
+    print(f"  with USB selected, {kept * 1e6:.0f} uF at the least is behind {switch} and the highest peak there, modelled, is {again:.2f} V; "
+          f"the parts there allow {SIX_VOLTS:.0f} V")
+    print(f"  {switch} also holds its output down once its input passes {usb_input.CLAMP_FROM[0]} to {usb_input.CLAMP_FROM[2]} V, but takes "
+          f"{usb_input.CLAMP_SECONDS * 1e6:.0f} us, a typical figure, to start")
     if again >= SIX_VOLTS:
         problems.append(f"a plug that makes contact again can ring the parts behind {switch} to {again:.2f} V")
-    if clamp >= SIX_VOLTS:
+    if max(usb_input.CLAMP_FROM[2], usb_input.CLAMP_TO[2]) >= SIX_VOLTS:
         problems.append(f"{switch} does not hold its output under what the parts behind it allow")
+
+    few = ahead + usb["output_caps"]
+    bare = max(hot_plug.remake_peak(metres, kept_at_usb(few), off[0], SWITCH_OHMS) for metres in hot_plug.LEAD_METRES)
+    print(f"  with the battery selected, which takes a battery over {off[0]:.2f} V, only {names(few)} are behind {switch}: "
+          f"left to themselves they would ring to {bare:.1f} V")
+    if len(usb["clamp"]) != 1:
+        return problems + [f"nothing turns that ring into the mux's output: expected one diode from {usb['output_net']} to {usb['system_net']}"]
+    diode = usb["clamp"][0]
+    held = BATTERY_MOST + CLAMP["volts"]
+    print(f"  {diode['ref']} {diode['value']} turns it into the capacitors on the mux's output, which the battery holds at {BATTERY_MOST} V at the most, "
+          f"so VBUS stops at that plus the diode's {CLAMP['volts']} V: {held:.2f} V")
+    if diode["value"] != CLAMP["part"]:
+        problems.append(f"{diode['ref']} is not the {CLAMP['part']} whose forward voltage this check knows")
+    if diode["nets"]["1"] != usb["system_net"]:
+        problems.append(f"{diode['ref']} has its cathode on {diode['nets']['1']}, not on the mux's output")
+    if held >= SIX_VOLTS:
+        problems.append(f"{diode['ref']} lets VBUS reach {held:.2f} V with the battery selected")
     return problems
 
 

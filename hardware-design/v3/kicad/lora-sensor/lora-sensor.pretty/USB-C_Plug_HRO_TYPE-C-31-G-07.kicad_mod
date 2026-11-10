@@ -3,11 +3,11 @@
 	(generator "pcbnew")
 	(generator_version "10.0")
 	(layer "F.Cu")
-	(descr "HRO TYPE-C-31-G-07 USB Type-C plug, 24 contacts in two rows on one face of the board, shell on two legs through slots and two surface pads. Pad and slot positions from the drawing's recommended layout; contact pad width and the solder paste over the legs from JLCPCB's footprint for C530607. The shell overhangs the board edge, which is drawn 0.10 mm back from the shell's rear face.")
+	(descr "HRO TYPE-C-31-G-07 USB Type-C plug, 24 contacts in two rows on one face of the board, shell on two legs through slots and two surface pads. Pad and slot positions from the drawing's recommended layout; contact pad width and the solder paste on the legs' lands from JLCPCB's footprint for C530607. The shell overhangs the board edge, which is drawn 0.10 mm back from the shell's rear face, and each slot is 0.20 mm longer than the drawing's at the end nearer that edge.")
 	(property "Reference" "REF**"
 		(at 0 -2.625 0)
 		(layer "F.SilkS")
-		(uuid "3ccfd704-37ea-484a-85a8-f7056f4b6a1d")
+		(uuid "a623b874-62e5-4858-a2d8-4bd9ed9a5e24")
 		(effects
 			(font
 				(size 0.8 0.8)
@@ -18,7 +18,7 @@
 	(property "Value" "USB-C_Plug_HRO_TYPE-C-31-G-07"
 		(at 0 4.625 0)
 		(layer "F.Fab")
-		(uuid "7b6ace23-31c6-4fa4-a895-d09a36c8529a")
+		(uuid "4ce186bf-2340-4d70-a581-5255628b6486")
 		(effects
 			(font
 				(size 0.8 0.8)
@@ -30,7 +30,7 @@
 		(at 0 0 0)
 		(layer "F.Fab")
 		(hide yes)
-		(uuid "cb75108d-7bbe-4fb2-8555-33bb00c8d581")
+		(uuid "9f4fca02-efd6-41cf-93d5-c4acaa70b1f3")
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -41,7 +41,7 @@
 		(at 0 0 0)
 		(layer "F.Fab")
 		(hide yes)
-		(uuid "8abecd32-2ee5-4754-b904-d66fdba8da5c")
+		(uuid "b3c34bca-53fb-42d6-8393-843d8601e1ec")
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -58,7 +58,7 @@
 			(type default)
 		)
 		(layer "F.SilkS")
-		(uuid "72125ee6-b264-4d43-a65e-2365013a0947")
+		(uuid "4dc2a0ae-fcd1-4332-b747-061a5e2948ed")
 	)
 	(fp_rect
 		(start -5 -2.025)
@@ -69,7 +69,7 @@
 		)
 		(fill no)
 		(layer "F.CrtYd")
-		(uuid "8d40efd5-2614-492e-ab09-6a66487a4b64")
+		(uuid "741e3802-3c9c-41a6-b268-cf4336eba983")
 	)
 	(fp_rect
 		(start -4.6 -1.424999)
@@ -80,7 +80,7 @@
 		)
 		(fill no)
 		(layer "F.Fab")
-		(uuid "e2e5a777-f389-4fbf-ab3e-e10c31231f1f")
+		(uuid "23c85dfe-900e-4a52-b122-d6ba8d01f3dc")
 	)
 	(fp_rect
 		(start -4.125 1.625)
@@ -91,39 +91,25 @@
 		)
 		(fill no)
 		(layer "F.Fab")
-		(uuid "a1609790-7823-45f0-86bf-bd8294a10456")
-	)
-	(pad "" smd rect
-		(at -4.0125 -0.25)
-		(size 1.474999 3.05)
-		(layers "F.Paste")
-		(thermal_bridge_angle 45)
-		(uuid "03428004-6138-44b9-a88f-2ed733fd6bb5")
-	)
-	(pad "" smd rect
-		(at 4.0125 -0.25)
-		(size 1.474999 3.05)
-		(layers "F.Paste")
-		(thermal_bridge_angle 45)
-		(uuid "741e3802-3c9c-41a6-b268-cf4336eba983")
+		(uuid "6385f610-71f8-4fb8-862c-05ac21ede1d6")
 	)
 	(pad "25" thru_hole oval
-		(at -4.25 -0.674999)
-		(size 1 2.2)
-		(drill oval 0.5 1.8)
-		(layers "*.Cu" "*.Mask")
+		(at -4.25 -0.574999)
+		(size 1 2.4)
+		(drill oval 0.5 2)
+		(layers "*.Cu" "*.Mask" "F.Paste")
 		(remove_unused_layers yes)
 		(keep_end_layers yes)
 		(uuid "8eeb7047-f1e1-43c0-8736-e50d0b811f83")
 	)
 	(pad "26" thru_hole oval
-		(at 4.25 -0.674999)
-		(size 1 2.2)
-		(drill oval 0.5 1.8)
-		(layers "*.Cu" "*.Mask")
+		(at 4.25 -0.574999)
+		(size 1 2.4)
+		(drill oval 0.5 2)
+		(layers "*.Cu" "*.Mask" "F.Paste")
 		(remove_unused_layers yes)
 		(keep_end_layers yes)
-		(uuid "23c85dfe-900e-4a52-b122-d6ba8d01f3dc")
+		(uuid "03428004-6138-44b9-a88f-2ed733fd6bb5")
 	)
 	(pad "27" smd rect
 		(at -3.575 0.505)
@@ -135,7 +121,7 @@
 		(at 3.575 0.505)
 		(size 0.6 1.54)
 		(layers "F.Cu" "F.Mask" "F.Paste")
-		(uuid "6385f610-71f8-4fb8-862c-05ac21ede1d6")
+		(uuid "b4886777-6295-4363-bc9c-112c3d864984")
 	)
 	(pad "A1" smd rect
 		(at 2.75 -0.774999)
@@ -328,66 +314,6 @@
 		(solder_mask_margin 0.025)
 		(zone_connect 0)
 		(uuid "217d7b9e-1b65-43b2-8a36-97a9c68fb999")
-	)
-	(zone
-		(layer "F.Cu")
-		(uuid "b4886777-6295-4363-bc9c-112c3d864984")
-		(hatch edge 0.5)
-		(connect_pads
-			(clearance 0)
-		)
-		(min_thickness 0.25)
-		(keepout
-			(tracks allowed)
-			(vias allowed)
-			(pads allowed)
-			(copperpour not_allowed)
-			(footprints allowed)
-		)
-		(placement
-			(enabled no)
-			(sheetname "")
-		)
-		(fill
-			(thermal_gap 0.5)
-			(thermal_bridge_width 0.5)
-			(island_removal_mode 0)
-		)
-		(polygon
-			(pts
-				(xy -4.85 -1.875) (xy -3.175 -1.875) (xy -3.175 1.375) (xy -4.85 1.375)
-			)
-		)
-	)
-	(zone
-		(layer "F.Cu")
-		(uuid "4dc2a0ae-fcd1-4332-b747-061a5e2948ed")
-		(hatch edge 0.5)
-		(connect_pads
-			(clearance 0)
-		)
-		(min_thickness 0.25)
-		(keepout
-			(tracks allowed)
-			(vias allowed)
-			(pads allowed)
-			(copperpour not_allowed)
-			(footprints allowed)
-		)
-		(placement
-			(enabled no)
-			(sheetname "")
-		)
-		(fill
-			(thermal_gap 0.5)
-			(thermal_bridge_width 0.5)
-			(island_removal_mode 0)
-		)
-		(polygon
-			(pts
-				(xy 3.175 -1.875) (xy 4.85 -1.875) (xy 4.85 1.375) (xy 3.175 1.375)
-			)
-		)
 	)
 	(embedded_fonts no)
 )

@@ -48,6 +48,7 @@ def describe(all_parts):
         "output_caps": between(all_parts, "C", pin["out"], "GND"),
         "system_caps": between(all_parts, "C", system, "GND"),
         "bleed": one(between(all_parts, "R", pin["out"], "GND"), "resistor from the switch's output to ground"),
+        "clamp": between(all_parts, "D", pin["out"], system),
     }
 
 

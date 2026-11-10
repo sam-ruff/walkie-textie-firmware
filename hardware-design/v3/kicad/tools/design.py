@@ -25,13 +25,16 @@ OUTLINE = [(0.0, 0.0), (BOARD_W, 0.0), (BOARD_W, BOARD_H), (0.0, BOARD_H)]
 # slots for the shell's two legs are 2.30 mm in and 8.50 mm apart. The footprint's origin is midway
 # between the rows.
 #
-# The shell's back face stops against the board edge, and a 1.50 mm leg in a 1.80 mm slot has 0.15 mm
-# of play. JLCPCB cuts an outline to within 0.2 mm, so an edge drawn at the face could stand 0.2 mm
-# proud and keep the legs out of their slots. The edge is therefore drawn 0.10 mm back from the face.
+# The shell's back face stops against the board edge, and a 1.50 mm leg in the drawing's 1.80 mm slot
+# has 0.15 mm of play, less if the leg is at the wide end of its 0.15 mm tolerance. JLCPCB cuts an
+# outline to within 0.2 mm, so an edge drawn at the face could stand 0.2 mm proud and keep the legs out
+# of their slots. Two things make room: the edge is drawn 0.10 mm back from the face, and each slot is
+# 0.20 mm longer than the drawing's at the end nearer the edge.
 PLUG_Y = 29.972
 PLUG_SET_BACK = 0.10
 PLUG_ROWS = {"B": 0.85, "A": 2.40}                                              # centre of each row of pads
-PLUG_LEGS = {"in": 2.30, "apart": 8.50, "slot": (0.50, 1.80), "leg": 1.50}      # slot: across the leg, along it
+# "slot" is the drawing's: across the leg, along it. "longer" is what is added at the edge end.
+PLUG_LEGS = {"in": 2.30, "apart": 8.50, "slot": (0.50, 1.80), "longer": 0.20, "leg": 1.50, "leg_tolerance": 0.15}
 OUTLINE_TOLERANCE = 0.2
 
 
@@ -152,20 +155,22 @@ part("L3", "120R 3A", (KICAD, "Inductor_SMD:L_0603_1608Metric"), (5.84, 32.51), 
 # for 20 V and takes the ring on its input, where only C7 is. It then raises its output at the rate C37
 # sets, so nothing behind it sees a step, and it limits the current to what R40 sets.
 #
-# The TPS259531 is the version that also holds its output to 5.7 V at the most while its input is higher.
-# That covers a plug that loses contact and makes it again while U14 is on, when the ring would otherwise
-# pass straight through. The TPS259571 (C471038) has the same pads and no clamp.
+# The TPS259531 is the version that also holds its output down once its input passes 5.5 to 5.9 V. That
+# backs up the damping when a plug loses contact and makes it again while U14 is on and the ring passes
+# straight through it. It takes some microseconds to act, so it is no answer to a fast ring: D6 is.
+# The TPS259571 (C471038) has the same pads and no clamp.
 part("U14", "TPS259531", (KICAD, "Package_SON:Texas_DSG0008A_WSON-8-1EP_2x2mm_P0.5mm_EP0.9x1.6mm"), (7.8, 36.0), 0,
      {"1": "DVDT", "2": "UVLO", "3": "VBUS_F", "4": "VBUS_F", "5": "VBUS", "6": "", "7": "ILM", "8": "GND", "9": "GND"},
      lcsc="C2155674", mpn="TPS259531DSGR", manufacturer="Texas Instruments", mask_margin=FINE_PITCH_MASK)
 kept("C7", "C7", {"1": "GND", "2": "VBUS_F"}, at=(5.42, 34.85), rot=0, lcsc="C307331", mpn="CL05B104KB54PNC", manufacturer="SAMSUNG")
-# U14 passes USB power once its input is over 3.75 V and stops under 3.44 V. The divider also keeps the
-# ring off its enable pin, which allows 6 V.
-part("R38", "100k", R0402, (5.4, 36.25), 0, {"1": "VBUS_F", "2": "UVLO"}, lcsc="C25741", mpn="0402WGF1003TCE", manufacturer="UNI-ROYAL")
+# U14 passes USB power once its input is over 4.0 V and stops under 3.7 V, as high as a USB supply at
+# its lowest (4.4 V) allows. The higher it stops, the less often it is still on when the mux has already
+# gone over to a fresh battery. The divider also keeps the ring off its enable pin, which allows 6 V.
+part("R38", "110k", R0402, (5.4, 36.25), 0, {"1": "VBUS_F", "2": "UVLO"}, lcsc="C25745", mpn="0402WGF1103TCE", manufacturer="UNI-ROYAL")
 part("R39", "47k", R0402, (5.837, 37.55), 90, {"1": "UVLO", "2": "GND"}, lcsc="C25792", mpn="0402WGF4702TCE", manufacturer="UNI-ROYAL")
-# 33 nF: the output rises 1.3 V a millisecond, which charges everything behind it at under 0.1 A,
+# 100 nF: the output rises 0.42 V a millisecond, which charges everything behind it at under 0.1 A,
 # the most a USB port owes a device that has not yet asked for more.
-part("C37", "33nF", C0402, (6.85, 38.1), 90, {"1": "DVDT", "2": "GND"}, lcsc="C106862", mpn="CC0402KRX7R9BB333", manufacturer="YAGEO")
+part("C37", "100nF", C0402, (6.85, 38.1), 90, {"1": "DVDT", "2": "GND"}, lcsc="C307331", mpn="CL05B104KB54PNC", manufacturer="SAMSUNG")
 # 1.5k: a limit of 1.37 A. The most the board takes from USB is at the moment the mux hands a flat
 # battery's load over, with VBUS still at the battery's voltage: just under 1 A.
 part("R40", "1.5k", R0402, (8.75, 38.15), 90, {"1": "ILM", "2": "GND"}, lcsc="C25867", mpn="0402WGF1501TCE", manufacturer="UNI-ROYAL")
@@ -214,9 +219,19 @@ part("L2", "1uH 4.3A", (KICAD, "Inductor_SMD:L_1008_2520Metric"), (16.2, 18.2), 
      lcsc="C882955", mpn="DFE252012P-1R0M=P2", manufacturer="Murata")
 part("C1", "22uF", C0805, (13.9, 15.0), 90, {"1": "GND", "2": "SYS_OUT"}, lcsc="C45783", mpn="CL21A226MAQNNNE", manufacturer="SAMSUNG")
 # The mux disconnects both supplies for some microseconds whenever it changes from one to the other, and
-# what is on its output then feeds the converter alone. C38 and C39 treble what C1 holds for that.
+# what is on its output then feeds the converter alone. C38, C39 and C40 are there for that. C40 is a
+# 6.3 V part on a rail that USB takes to 5.9 V at the most; at a battery's voltage it holds far more
+# than a 22 uF does.
 part("C38", "22uF", C0805, (12.5, 17.7), 0, {"1": "GND", "2": "SYS_OUT"}, lcsc="C45783", mpn="CL21A226MAQNNNE", manufacturer="SAMSUNG")
 part("C39", "22uF", C0805, (12.9, 20.65), 0, {"1": "GND", "2": "SYS_OUT"}, lcsc="C45783", mpn="CL21A226MAQNNNE", manufacturer="SAMSUNG")
+part("C40", "100uF", (KICAD, "Capacitor_SMD:C_1206_3216Metric"), (13.0, 23.1), 0, {"1": "GND", "2": "SYS_OUT"},
+     lcsc="C15008", mpn="CL31A107MQHNNNE", manufacturer="SAMSUNG")
+# While the mux has the battery selected, nothing but C31 and C7 is behind U14, and a plug that makes
+# contact again would ring them past 6 V. D6 turns that ring into the capacitors on the mux's output
+# once VBUS is a diode's drop above them. It is a silicon diode: a Schottky would leak the battery
+# into VBUS. With USB selected the mux's own switch is across it and it carries nothing.
+part("D6", "ES1D", (KICAD, "Diode_SMD:D_SOD-123F"), (12.6, 25.5), 180, {"1": "SYS_OUT", "2": "VBUS"},
+     lcsc="C2923901", mpn="ES1DL", manufacturer="CJ")
 part("C26", "47uF", C0805, (18.4, 15.0), 90, {"1": "GND", "2": "+3V3"}, lcsc="C16780", mpn="CL21A476MQYNNNE", manufacturer="SAMSUNG")
 kept("R15", "R15", {"1": "FB", "2": "+3V3"}, at=(18.5, 12.8), rot=0)
 kept("R16", "R16", {"1": "FB", "2": "GND"}, at=(16.95, 11.9), rot=270)
@@ -352,8 +367,8 @@ TOP_CLEAR = [                                 # no top-layer track here: a line 
 ]
 UNDER_LORA_MODULE = 2.5                       # mm of top-layer track a line may have under the LoRa module, to reach its pad
 T, V, POLY = "track", "via", "poly"
-# The plug's two rows of pads, the middle of the gap between them, and its legs.
-PB, PA, PM, PL = plug_x(PLUG_ROWS["B"]), plug_x(PLUG_ROWS["A"]), PLUG_AT[0], plug_x(PLUG_LEGS["in"])
+# The plug's two rows of pads, the middle of the gap between them, and the middle of each leg's slot.
+PB, PA, PM, PL = plug_x(PLUG_ROWS["B"]), plug_x(PLUG_ROWS["A"]), PLUG_AT[0], plug_x(PLUG_LEGS["in"] - PLUG_LEGS["longer"] / 2)
 COPPER = [
     # battery: connector pin 1 -> Q1 drain; Q1 source -> mux VIN2, with its 1 uF on the way
     (T, "BAT_RAW", "top", 0.5, [(4.969, 9.6), (4.97, 11.362)]),
@@ -425,10 +440,17 @@ COPPER = [
     (V, "GND", (10.6, 12.2)),
     # the two capacitors that hold the mux's output up while it changes supply, beside the converter's own
     (T, "SYS_OUT", "top", 0.5, [(13.45, 15.95), (13.45, 17.7), (13.45, 19.9), (13.85, 20.3), (13.85, 20.65)]),
+    (T, "SYS_OUT", "top", 0.5, [(13.85, 20.65), (13.85, 21.7), (14.475, 22.3), (14.475, 23.1)]),
     (T, "GND", "top", 0.4, [(11.55, 17.7), (11.55, 16.5)]),
     (V, "GND", (11.55, 16.5)),
     (T, "GND", "top", 0.4, [(11.95, 20.65), (11.95, 19.4)]),
     (V, "GND", (11.95, 19.4)),
+    (T, "GND", "top", 0.4, [(11.525, 23.1), (11.525, 21.82)]),
+    (V, "GND", (11.525, 21.82)),
+    # the clamp diode: its anode from a via on VBUS's bottom-layer run, its cathode to C40
+    (V, "VBUS", (8.128, 25.5)),
+    (T, "VBUS", "top", 0.5, [(8.128, 25.5), (11.2, 25.5)]),
+    (T, "SYS_OUT", "top", 0.5, [(14.0, 25.5), (14.0, 24.6), (14.475, 24.1), (14.475, 23.1)]),
 
     # converter, after TI's layout example: capacitors at the pins, inductor across LX1/LX2
     (POLY, "SYS_OUT", "top", [(14.4, 15.45), (15.593, 15.45), (15.593, 15.981), (14.4, 15.981)]),
@@ -668,6 +690,8 @@ LABELS = [
 # Parts the silkscreen names by what they do, in place of their designator. Each name is placed
 # beside its part before any designator is.
 SILK_NAMES = {"SW1": "BOOT", "SW2": "RST", "SW3": "WAKE"}
+# Test pads the bring-up steps tell someone to touch: each has to carry its name on the silkscreen.
+MUST_NAME = ("TP2", "TP3")
 
 # The goblin on the silkscreen: footprint in the board's own library, centre, rotation, width in mm
 # and style ("filled" draws the robe solid, "lines" draws outlines only).

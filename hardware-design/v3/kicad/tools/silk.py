@@ -11,9 +11,10 @@ its own outline, where it is covered once the part is on. Any other part with
 no such place keeps its designator on the fabrication layer only and is
 listed: a designator that could be read as a neighbour's is worse than none.
 The labels from design.LABELS are placed as given. A button is named by what
-it does (design.SILK_NAMES) and a test pad by what it carries: those names
-are placed the same way as a designator, the buttons' first, and a button
-with no place for its name stops the build.
+it does (design.SILK_NAMES) and a test pad by what it carries. Those names
+are placed before any designator, close to their part, and need only clear
+what is already there. A button, or a test pad in design.MUST_NAME, with no
+place for its name stops the build.
 
 Every part also carries its designator on the fabrication layer, inside its
 outline, which is what the assembly drawing shows. Diodes get a bar there at
@@ -39,6 +40,14 @@ NEARER = 0.4               # a designator is this much nearer its own part than 
 FAB_TEXT = (0.3, 0.8)      # least and most character height of a designator on the fabrication layer
 POLARISED = ("D", "LED")   # designators of parts whose pad 1 is a cathode
 HEADING_H = 1.1            # character height of the assembly drawing's heading, in board millimetres
+PIN_ONE_DOT = 0.4          # diameter of the dot that marks pad 1 on the assembly drawing
+DESIGNATOR_AWAY = (0.25, 0.5, 0.9, 1.4, 2.0, 2.6)      # distances from a part at which its designator is tried
+NAME_AWAY = (0.25, 0.5, 0.9, 1.4)                      # and the name of a button or a test pad
+
+
+def named(ref):
+    """Whether the silkscreen names a part by what it does or carries: the buttons and the test pads."""
+    return ref in design.SILK_NAMES or ref.startswith("TP")
 
 
 def box_of(item):
@@ -117,7 +126,8 @@ def heading(board):
     """The assembly drawing's heading, under the board on the comments layer."""
     lines = [f"{design.TITLE} V{design.REVISION}  {design.DATE}",
              f"Assembly drawing for the default order ({design.DEFAULT_ORDER}).",
-             "Parts crossed through are left out of it. A bar marks a diode's cathode."]
+             "Parts crossed through are left out of it.",
+             "A bar marks a diode's cathode and a dot marks pad 1."]
     for row, line in enumerate(lines):
         text = pcbnew.PCB_TEXT(board)
         text.SetText(line)
@@ -128,6 +138,22 @@ def heading(board):
         text.SetVertJustify(pcbnew.GR_TEXT_V_ALIGN_CENTER)
         text.SetPosition(P(0.0, -1.5 - row * HEADING_H * 1.7))
         board.Add(text)
+
+
+def fab_pin_one(board, fp):
+    """A dot on the fabrication layer at pad 1 of a part with three pads or more: drawn on the board, like the bar below."""
+    first = fp.FindPadByNumber("1") or fp.FindPadByNumber("A1")
+    if first is None:
+        return
+    dot = pcbnew.PCB_SHAPE(board)
+    dot.SetShape(pcbnew.SHAPE_T_CIRCLE)
+    centre = first.GetPosition()
+    dot.SetCenter(centre)
+    dot.SetEnd(VECTOR2I(centre.x + FromMM(PIN_ONE_DOT / 2), centre.y))
+    dot.SetFilled(True)
+    dot.SetLayer(pcbnew.F_Fab)
+    dot.SetWidth(FromMM(0.05))
+    board.Add(dot)
 
 
 def fab_cathode(board, fp, body):
@@ -187,8 +213,8 @@ def main():
             return False
         if any(overlap(box, other, 0.0) for ref, other in body.items() if ref != me):
             return False                             # it would be under another part once the board is built
-        if me in design.SILK_NAMES:
-            return True                              # a word like WAKE is not read as a neighbour's designator
+        if named(me):
+            return True                              # a word like WAKE or IO4 is not read as a neighbour's designator
         own = gap(box, pads_of[me])
         return all(gap(box, other) > own + NEARER for ref, other in pads_of.items() if ref != me)
 
@@ -221,7 +247,7 @@ def main():
         board.Add(t)
 
     hidden = []
-    footprints = sorted(parts, key=lambda f: (f.GetReference() not in design.SILK_NAMES, -len(f.Pads()), f.GetReference()))
+    footprints = sorted(parts, key=lambda f: (not named(f.GetReference()), -len(f.Pads()), f.GetReference()))
     for fp in footprints:
         me = fp.GetReference()
         fp.Value().SetVisible(False)
@@ -241,7 +267,8 @@ def main():
         cx, cy = (bx1 + bx2) / 2, (by1 + by2) / 2
         length = len(ref.GetText()) * TEXT_W * 0.95
         options = []
-        for away in (0.25, 0.5, 0.9, 1.4, 2.0, 2.6):
+        # a name stays close to its part, because nothing else says whose it is
+        for away in NAME_AWAY if named(me) else DESIGNATOR_AWAY:
             for rot, w, h in ((0, length, TEXT_H), (90, TEXT_H, length)):
                 for x in (cx, bx1 + w / 2, bx2 - w / 2, bx1 - w / 2, bx2 + w / 2):
                     options += [(rot, (x, by2 + away + h / 2)), (rot, (x, by1 - away - h / 2))]
@@ -261,16 +288,18 @@ def main():
                 obstacles.append((box, TEXT_MARGIN, me))
                 placed = True
                 break
-        if not placed and me in design.SILK_NAMES:
-            raise SystemExit(f"no place on the silkscreen for {design.SILK_NAMES[me]!r} beside {me}")
+        if not placed and (me in design.SILK_NAMES or me in design.MUST_NAME):
+            raise SystemExit(f"no place on the silkscreen for {ref.GetText()!r} beside {me}")
         if not placed:
             ref.SetLayer(pcbnew.F_Fab)
             if ref is not fp.Reference():
-                ref.SetVisible(False)                # a test pad's label that found no place is dropped: its designator names it
+                ref.SetVisible(False)                # a test pad's name that found no place is dropped: its designator names it
             hidden.append(me)
         fab_designator(fp, body[me])
         if me.rstrip("0123456789") in POLARISED:
             fab_cathode(board, fp, body[me])
+        elif len([pad for pad in fp.Pads() if pad.GetNumber()]) >= 3:
+            fab_pin_one(board, fp)
     heading(board)
     pcbnew.SaveBoard(board_path, board)
     print(f"designators on the silkscreen: {len(footprints) - len(hidden)} of {len(footprints)}")

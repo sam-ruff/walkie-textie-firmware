@@ -106,8 +106,9 @@ what to check before ordering.
   and compares pads), `check_fab.py` (reads the plotted Gerbers and drill
   file and each order's BOM and placement file, and checks the outline, the
   slots for the plug's legs and that an edge at either end of its tolerance
-  lets the legs into them, the solder paste on its pads and over its legs,
-  the solder mask left between openings, and that every
+  lets the widest leg into them, the solder paste on its pads and on the
+  lands round its legs with none on bare board, the solder mask left
+  between openings, and that every
   part an order fits has a JLCPCB number and a placement row), `check_rf.py`
   (feed impedance, antenna land pattern, ESP32 antenna
   overhang, and the radiated power and harmonics the datasheets predict at
@@ -115,7 +116,8 @@ what to check before ordering.
   field they could radiate, the voltage a discharge puts on the plug
   shell's capacitor, the ring on the USB input when it is plugged into
   a live supply, which has to stay on parts rated for it, and the ring
-  behind the switch when a plug loses contact and makes it again),
+  behind the switch when a plug loses contact and makes it again, with the
+  mux on USB and with it back on the battery),
   `check_connectors.py` (pin 1 of the battery and
   sensor connectors against KiCad's footprints for the JST parts, and the
   silkscreen legend against the nets) and `check_values.py` (the 3.3 V rail,
@@ -182,17 +184,28 @@ what to check before ordering.
   timer allow 6 V and a USB supply may be 5.5 V, so a plug-in ring cannot be
   let onto them. U14 is rated for 20 V and is off while its input rings
   (10.7 V at worst in `tools/hot_plug.py`, on C7's 50 V). It then raises
-  VBUS at 1.3 V/ms (C37, 33 nF), which charges what is behind it at 87 mA,
-  and limits the current to 1.37 A (R40, 1.5 k). The limit is that high
-  because the mux hands a flat battery's load to USB while VBUS is still at
-  the battery's voltage, which takes 0.98 A for a moment. R38 and R39
-  (100 k and 47 k) turn it on at 3.75 V and off at 3.44 V and keep the ring
-  off its enable pin, which allows 6 V. The TPS259531 also holds its output
-  at 5.7 V or less once its input passes 5.5 to 5.9 V, for a plug that
-  loses contact and makes it again while U14 is on. The TPS259571
-  (C471038) has the same pads and no clamp. Nothing has measured any of
-  this. The first two attempts were dampers on the input: see "Mistakes
-  made here".
+  VBUS at 0.42 V/ms (C37, 100 nF), which charges what is behind it at
+  71 mA, and limits the current to 1.37 A (R40, 1.5 k). The limit is that
+  high because the mux hands a flat battery's load to USB while VBUS is
+  still at the battery's voltage, which takes 1.03 A for a moment. R38 and
+  R39 (110 k and 47 k) turn it on at 4.0 V and off at 3.7 V (3.39 V at the
+  least), as high as a USB supply at 4.4 V allows, and keep the ring off
+  its enable pin, which allows 6 V. The TPS259531 also holds its output
+  down once its input passes 5.5 to 5.9 V, so VBUS cannot stay over 5.9 V.
+  That takes it 10 us, so it backs the damping up and is no answer to a
+  fast ring. The TPS259571 (C471038) has the same pads and no clamp.
+  Nothing has measured any of this. The first two attempts were dampers on
+  the input: see "Mistakes made here".
+- D6, an ES1D from VBUS to the mux's output, covers the one state in which
+  U14 is on and the big capacitors are not behind it. A battery over
+  U14's turn-off voltage (two fresh lithium cells are 3.6 V) lets the mux
+  go back to it while U14 is still on, and then only C7 and C31 are behind
+  the lead. A plug that makes contact again would ring them to about 7 V.
+  D6 turns the ring into the capacitors on the mux's output, so VBUS stops
+  at the battery's voltage plus the diode's drop, under 5 V. It must stay
+  a silicon diode: a Schottky would leak the battery into VBUS, where R9
+  would drain it and D5 could hold the converter on. With USB selected
+  the mux's own switch is across D6 and it carries nothing.
 - The mux passes whichever of USB and the battery is the higher: U4's
   select and mode pins (4 and 5) are both on ground, the last rows of the
   truth table in the TPS2116 datasheet. Do not go back to a threshold on
@@ -205,15 +218,21 @@ what to check before ordering.
   does the same.
 - The mux disconnects both supplies before it connects the new one, for
   17.7 us typical at 1.8 V (no maximum is given). C1, C38 and C39 (22 uF
-  each) feed the converter alone for that time. `tools/supply_change.py`
-  models it at twice that break with the capacitors at 60 per cent: from a
-  2.0 V battery the output is left at 1.58 V with LoRa transmitting, and
-  the converter stops at 1.5 V. With both radios transmitting the worst
-  case passes only from 2.32 V up, so a change of supply on a nearly flat
-  battery can reset the ESP32. The datasheet states no hysteresis between
-  the two inputs. Its test conditions hold them 0.1 and 0.2 V apart, which
-  may be it, so how often the mux changes over at one crossing has to be
-  seen on a scope.
+  each) and C40 (100 uF, a 6.3 V part) feed the converter alone for that
+  time. `tools/supply_change.py` models it at twice that break with the
+  capacitors at 60 and 50 per cent, starting from what the battery gives
+  the mux's output through 145 milliohms of MOSFET, mux and track. With
+  2.0 V at the battery connector and LoRa transmitting, one break leaves
+  1.76 V, and the converter stops at 1.5 V. With both radios transmitting
+  one break passes only from 2.05 V up. The datasheet states no
+  hysteresis between the two inputs. Its test conditions hold them 0.1
+  and 0.2 V apart, which may be it. A tired battery, whose voltage moves
+  more than that as the load comes on and off, can make the mux change
+  over two or three times at one crossing, and nothing says the
+  capacitors are topped up between: two breaks leave 1.56 V with LoRa
+  transmitting and three leave 1.33 V. So a change of supply on a nearly
+  flat battery can still reset the ESP32, and how often the mux changes
+  over has to be seen on a scope.
 - R36 is there because the TLV803's output is rated for 5 mA and has to
   discharge the 1 uF on EN at every reset.
 - D5 must stay a silicon diode and D4 a Schottky. A Schottky at D5 leaks from
@@ -228,12 +247,18 @@ what to check before ordering.
   footprint is drawn in `tools/make_footprints.py`. Pad and slot positions
   are from the drawing in `v3/kicad/datasheets/`. The contact pads are
   0.27 mm wide as in JLCPCB's footprint for C530607, where the drawing's
-  0.36 mm leaves no room for solder mask, and the stencil has one opening
-  over each leg and the shell pad beside it, also as JLCPCB's has: that
-  paste is what solders the leg in its slot. The shell's rear face stops
-  against the board edge and each leg has 0.15 mm of play in its slot, so
-  the whole footprint sits 0.1 mm nearer the edge than the drawing has it
-  (`PLUG_SET_BACK`): an edge cut 0.2 mm proud then still lets the legs in.
+  0.36 mm leaves no room for solder mask, and there is solder paste on the
+  land round each leg's slot, also as JLCPCB's has: that paste is what
+  solders the leg. Their paste is the outline of the two pads, 2.85 mm2
+  and all on copper. The shell's rear face stops against the board edge
+  and a leg at the wide end of its tolerance has 0.075 mm of play in the
+  drawing's slot. So the whole footprint sits 0.1 mm nearer the edge than
+  the drawing has it (`PLUG_SET_BACK`) and each slot is 2.0 mm long, 0.2 mm
+  more than the drawing's at the end nearer the edge: an edge cut 0.2 mm
+  proud then still lets the legs in. The drawing's general tolerance on
+  where the legs sit is wider than that covers, and only built boards will
+  show whether it matters. The shell stands 0.15 mm below the bottom face
+  of the 0.8 mm board and the legs about 0.8 mm.
   Only A6 and A7 carry the data pair and only A5 a CC resistor. Each
   ground and VBUS contact is joined to its twin in the other row by a
   short track.
@@ -245,6 +270,18 @@ what to check before ordering.
   their entry for the IPEX version, for the placement check. C55348741
   itself will not do: its antenna pad is not connected, and it was out of
   stock on 10 November 2026.
+- The LoRa module's RF_SW pin (pad 1) is on GPIO38 with R25, 10 k, to
+  3.3 V. The firmware never drives GPIO38, so on this board the pin is high
+  all the time, and on the Seeed kit the firmware was proved on it floats.
+  Seeed's datasheet for the module says high enables receiving and the pin
+  is low at other times, which is also what the brief has. Seeed's staff
+  say on their forum that RF_SW is the /CTRL input (pin 6) of the module's
+  antenna switch and DIO2 its CTRL input (pin 4). On a switch with those
+  pins a high level on pin 6 leaves CTRL alone in charge, which is why the
+  pull-up was chosen, but nobody has named the part. Until transmit power
+  has been measured both ways at J3 (the README has the steps), treat it
+  as open. Firmware that drives GPIO38 high to receive and low to transmit
+  and sleep settles it either way and needs no change to the board.
 - `v3/kicad/CE_TESTING.md` is how to run the compliance plan
   (`walkie-textie-flutter/docs/COMPLIANCE.md`) on this board.
 - V3.1 designators differ from both the brief and PCB_V3. Carried over under a
@@ -754,5 +791,43 @@ held the legs out of the slots. This is the tongue mistake again, with a
 different part.
 
 > For every part that touches or hangs over an edge, find what stops against
-> what and stack the outline tolerance on it. `check_fab.py` now does the sum
-> for the plug.
+> what and stack the outline tolerance on it, with the part at the bad end
+> of its own tolerance. `check_fab.py` now does the sum for the plug.
+
+**Soil sensor: read a shape's bounding box as the shape.** To give the plug's
+legs paste "as JLCPCB's footprint has it", a script printed the extent of
+their paste region, 1.475 by 3.15 mm, and the footprint got a rectangle that
+size: 4.5 mm2, a third of it on solder mask beside the corner contacts.
+Their region is the outline of the two pads, 2.85 mm2, all on copper.
+
+> Take the area of a shape and plot it before copying it. The gate now
+> fails on paste that is not over copper.
+
+**Soil sensor: modelled the plug losing contact with the mux in one position
+only.** The check for a plug that makes contact again kept every capacitor
+behind the protection switch. With a battery over the switch's turn-off
+voltage, the mux has gone back to the battery while the switch is still on,
+and only 1.1 uF is behind it: the same formula gives about 7 V on parts that
+allow 6 V. This is the "modelled with no battery fitted" mistake again, one
+part further on.
+
+> When a model covers a path with two switches in it, write down the
+> positions of both before modelling any of them. D6 now clamps that
+> state and `check_emc.py` works out both.
+
+**Soil sensor: started the hand-over sum from the battery connector's
+voltage.** The hold-up model took the mux's output to start at the battery's
+2.0 V. The MOSFET, the mux and the tracks drop 0.06 V at that current, and
+that was all the margin the figure had.
+
+> A voltage quoted at a connector is not the voltage at the part. Follow the
+> current through everything in between before using it.
+
+**Soil sensor: let "the firmware never drives it" stand for "it need not be
+driven".** The module's RF_SW pin got a pull-up because the firmware leaves
+GPIO38 alone, and the build printed "ok". The module's datasheet says the pin
+is low while transmitting. It may well not matter, but nothing here showed
+that.
+
+> When firmware leaves a pin alone, read what the part's datasheet wants on
+> that pin in every mode, and say which modes the default does not meet.

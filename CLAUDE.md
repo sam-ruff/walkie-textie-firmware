@@ -57,8 +57,13 @@ For firmware it differs from PCB_V3 like this:
   soil sensor should still enable the brownout detector and a watchdog.
 - The LoRa module is the Wio-SX1262, wired as on the radio board, so
   `configure_tcxo` and `configure_dio2_rf_switch` apply unchanged.
-- The module's receive-enable pin is on GPIO38 with a 10 kohm pull-up, so the
-  firmware still need not drive it.
+- The module's RF_SW pin is on GPIO38 with a 10 kohm pull-up, and this
+  firmware never drives GPIO38. High enables the module's receive path.
+  Seeed's datasheet for the module has the pin low while transmitting and
+  asleep, so on this board it is high where Seeed has it low, and on the
+  Seeed kit it floats. Whether that costs transmit power has to be measured
+  on the first board (`hardware-design/v3/kicad/README.md`). Driving
+  GPIO38 high to receive and low otherwise would settle it on both boards.
 - I2C stays on SDA GPIO2 and SCL GPIO1, each through 100 ohms to the
   connector, and the pin map for SPI, the LED and USB is unchanged.
   `hardware-design/v3/kicad/tools/check_firmware.py` reads the pins from
@@ -70,9 +75,9 @@ For firmware it differs from PCB_V3 like this:
   (`fab/BOM.csv`) and leaves it out in the `timed` order, which is the one
   for firmware that signals DONE. With USB attached the rail stays up anyway.
 - Plugging USB in or pulling it out while the board runs from its battery
-  leaves the converter without a supply for some microseconds, on three
-  22 uF capacitors. With both radios transmitting from a battery under
-  about 2.3 V that can reset the ESP32 (a model's worst case, not a
+  leaves the converter without a supply for some microseconds, on the
+  capacitors at its input. On a nearly flat battery with a radio
+  transmitting that can reset the ESP32 (a model's worst case, not a
   measurement), so firmware must not assume it keeps running through a
   change of supply.
 

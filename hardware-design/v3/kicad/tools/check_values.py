@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import parts as parts_module
 import supply_change
 import usb_input
-from values import divided, farads, names, resistor_between, span
+from values import divided, farads, names, rated_volts, resistor_between, span
 
 # TPS631000 datasheet: feedback reference in volts (least, typical, most), and the input voltage at
 # which the converter stops, at the most.
@@ -41,8 +41,9 @@ LOADS = [("both radios listening", 0.093 + 0.0076), ("LoRa transmitting", 0.093 
 PEAK_WATTS = supply_change.watts(LOADS[-1][1])
 LIMIT_MARGIN = 1.5         # the current limit is at least this many times what the board takes in steady use
 HANDOVER_MARGIN = 1.2      # and this many times what it takes at the moment the mux hands the load to USB
-BATTERY_FLAT = 2.0         # volts: two AA cells at the end of their life, the least the brief runs the board from
+BATTERY_FLAT = 2.0         # volts at the battery connector: two AA cells at the end of their life, the least the brief runs the board from
 BATTERY_LOW = 2.4          # volts: the same cells at 1.2 V each, well into their discharge
+RIDE_MARGIN = 0.10         # one worst-case break has to leave this much over the voltage at which the converter stops
 # TPS2116 datasheet: the mux passes the higher of its inputs with these two pins low, and takes this as low.
 MUX_LOW = 0.35
 # TLV803S datasheet: falling threshold in volts (least, typical, most), the hysteresis above it, the
@@ -130,7 +131,7 @@ def check_switch(usb):
     # The mux hands the load to USB while the switch is still raising VBUS past the battery's voltage,
     # so for a moment the switch feeds the converter at that voltage and charges the capacitors as well.
     behind = usb["output_caps"] + usb["system_caps"]
-    handover = PEAK_WATTS / BATTERY_FLAT + usb_input.marked_farads(behind) * usb_input.slew_rate(usb) * 1000
+    handover = PEAK_WATTS / supply_change.under_load(BATTERY_FLAT, PEAK_WATTS) + usb_input.marked_farads(behind) * usb_input.slew_rate(usb) * 1000
     print(f"USB switch: {resistor['ref']} {resistor['value']} limits it to {amps[1]:.2f} A, {amps[0]:.2f} to {amps[2]:.2f} A at the worst case")
     print(f"  with both radios transmitting the board takes {steady:.2f} A from a {USB_LOWEST:.1f} V supply, "
           f"and {handover:.2f} A at the moment the mux hands over the load of a {BATTERY_FLAT:.1f} V battery")
@@ -142,7 +143,7 @@ def check_switch(usb):
     capacitor = usb["slew_cap"]
     if farads(capacitor["value"]) < usb_input.SLEW_FARADS:
         problems.append(f"{capacitor['ref']} is under the {usb_input.SLEW_FARADS * 1e12:.0f} pF the switch's slew pin takes")
-    print(f"USB switch: {capacitor['ref']} {capacitor['value']} has it raise its output at {usb_input.slew_rate(usb):.1f} V a millisecond")
+    print(f"USB switch: {capacitor['ref']} {capacitor['value']} has it raise its output at {usb_input.slew_rate(usb):.2f} V a millisecond")
 
     from_volts, to_volts = usb_input.CLAMP_FROM, usb_input.CLAMP_TO
     print(f"USB switch: with {from_volts[0]} to {from_volts[2]} V or more on its input {name} holds its output at {to_volts[0]} to {to_volts[2]} V; "
@@ -169,25 +170,31 @@ def check_mux(usb):
           f"{bleed['ref']} {bleed['value']} empties VBUS when USB goes")
 
     capacitors = usb["system_caps"]
-    marked = usb_input.marked_farads(capacitors)
+    marked = [(farads(part["value"]), rated_volts(part["mpn"])) for part in capacitors]
     loads = [(label, supply_change.watts(amps)) for label, amps in LOADS]
     print(f"  at each change of supply it disconnects both for {supply_change.BREAK_SECONDS * 1e6:.1f} us, a typical figure with no maximum given, "
           f"and {names(capacitors)} feed the converter alone")
-    print(f"  from a {BATTERY_FLAT:.1f} V battery that leaves " + ", ".join(
-        f"{supply_change.typical(BATTERY_FLAT, power, marked):.2f} V with {label}" for label, power in loads))
-    print(f"  at {supply_change.BREAK_ALLOWANCE:g} times that break, with the capacitors at {supply_change.OUTPUT_KEEPS:.0%} of their marked value: " + ", ".join(
+    print(f"  with {BATTERY_FLAT:.1f} V at the battery connector they start the break at " + ", ".join(
+        f"{supply_change.under_load(BATTERY_FLAT, power):.2f} V" for _, power in loads)
+        + " (" + ", ".join(label for label, _ in loads) + f"), after {supply_change.SERIES_OHMS * 1000:.0f} milliohms of MOSFET, mux and track")
+    print("  one break of the typical length, capacitors at their marked value, leaves " + ", ".join(
+        f"{supply_change.typical(BATTERY_FLAT, power, marked):.2f} V" for _, power in loads))
+    print(f"  one break {supply_change.BREAK_ALLOWANCE:g} times as long, with {supply_change.kept(marked) * 1e6:.0f} uF left of the capacitors, leaves " + ", ".join(
         f"{supply_change.worst(BATTERY_FLAT, power, marked):.2f} V" for _, power in loads)
         + f"; the converter stops at {CONVERTER_STOPS:.2f} V at the most and the timer is specified from {TIMER['least_volts']} V")
+    label, power = loads[1]
+    print(f"  the mux may change over more than once at one crossing, and nothing says the capacitors are topped up between: with {label}, "
+          + " and ".join(f"{count} such breaks in a row leave {supply_change.worst(BATTERY_FLAT, power, marked, count):.2f} V" for count in (2, 3)))
     for label, power in loads:
         least = supply_change.least_battery(power, marked, CONVERTER_STOPS)
         if least > BATTERY_FLAT:
-            print(f"  so with {label} a change of supply can stop the converter when the battery is under {least:.2f} V; the supervisor then resets the ESP32")
+            print(f"  with {label}, one worst-case break can stop the converter when the connector is under {least:.2f} V; the supervisor then resets the ESP32")
     for label, power in loads[:-1]:
-        if supply_change.worst(BATTERY_FLAT, power, marked) <= CONVERTER_STOPS:
-            problems.append(f"a change of supply can stop the converter with {label} from a {BATTERY_FLAT:.1f} V battery")
+        if supply_change.worst(BATTERY_FLAT, power, marked) < CONVERTER_STOPS * (1 + RIDE_MARGIN):
+            problems.append(f"one break at a change of supply leaves under {RIDE_MARGIN:.0%} over the converter's stop with {label} from {BATTERY_FLAT:.1f} V")
     label, power = loads[-1]
     if supply_change.least_battery(power, marked, CONVERTER_STOPS) > BATTERY_LOW:
-        problems.append(f"a change of supply can stop the converter with {label} from a {BATTERY_LOW:.1f} V battery")
+        problems.append(f"a change of supply can stop the converter with {label} from {BATTERY_LOW:.1f} V at the connector")
     return problems
 
 

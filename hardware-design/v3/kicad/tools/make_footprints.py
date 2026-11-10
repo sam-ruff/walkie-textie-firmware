@@ -8,8 +8,9 @@ Usage: make_footprints.py new.pretty kicad_footprints_dir
   (datasheets/TYPE-C-31-G-07_plug_drawing.pdf). Two things follow JLCPCB's
   own footprint for the part (C530607) instead: the contact pads are 0.27 mm
   wide, where the drawing's 0.36 mm leaves no room for solder mask between
-  them, and solder paste is printed over each leg and the shell pad beside
-  it, which is what solders the legs in their slots.
+  them, and solder paste is printed over the land round each leg's slot,
+  which is what solders the legs. One thing is ours: each slot is longer
+  than the drawing's at the end nearer the board edge (design.PLUG_LEGS).
 - U.FL test connector: KiCad's footprint, marked as allowed to bridge its own
   solder mask opening so DRC does not report the library part itself.
 - Module and antenna footprints: thermal spokes set square to the pads. The
@@ -22,7 +23,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import design
 import pcbnew
-from kiboard import lset, seed_ids
+from kiboard import seed_ids
 from make_lib import rect
 from pcbnew import VECTOR2I, FromMM
 
@@ -34,7 +35,7 @@ PLUG = {
     "shell_pad_width": 0.60,            # the shell's two surface pads
     "shell_pad_in": (0.29, 1.89),       # where each starts and ends
     "shell_pads_apart": 7.15,
-    "leg_pad": (1.00, 2.20),            # copper round each leg's slot
+    "leg_land": (0.25, 0.20),           # copper round each leg's slot: beside it, beyond each end
     "on_board": 3.05,                   # how far the plug's back reaches in
     "overhang": 10.70,                  # how far its shell reaches out
     "shell_width": 8.25,
@@ -96,7 +97,11 @@ def plug_pad(fp, number, x, inward, size, through=None):
         pad.SetShape(pcbnew.PAD_SHAPE_OVAL)
         pad.SetDrillShape(pcbnew.PAD_DRILL_SHAPE_OBLONG)
         pad.SetDrillSize(VECTOR2I(FromMM(through[0]), FromMM(through[1])))
-        pad.SetLayerSet(pcbnew.PAD.PTHMask())
+        # Solder paste on the top land, over the slot: that paste is what solders the leg. JLCPCB's
+        # footprint for the part has the same.
+        layers = pcbnew.PAD.PTHMask()
+        layers.AddLayer(pcbnew.F_Paste)
+        pad.SetLayerSet(layers)
         # no land on the inner layers, where the leg joins nothing: the planes then only step round the slot
         pad.SetRemoveUnconnected(True)
         pad.SetKeepTopBottom(True)
@@ -108,37 +113,6 @@ def plug_pad(fp, number, x, inward, size, through=None):
     pad.SetThermalSpokeAngleDegrees(90)
     fp.Add(pad)
     return pad
-
-
-def paste_only(fp, x, inward, size):
-    """Solder paste with no pad of its own, the way KiCad's footprints print it on a thermal pad."""
-    pad = pcbnew.PAD(fp)
-    pad.SetNumber("")
-    pad.SetAttribute(pcbnew.PAD_ATTRIB_SMD)
-    pad.SetShape(pcbnew.PAD_SHAPE_RECT)
-    layers = pcbnew.LSET()
-    layers.AddLayer(pcbnew.F_Paste)
-    pad.SetLayerSet(layers)
-    pad.SetSize(VECTOR2I(FromMM(size[0]), FromMM(size[1])))
-    pad.SetPosition(VECTOR2I(FromMM(x), FromMM(plug_y(inward))))
-    fp.Add(pad)
-
-
-def no_fill(fp, x, inward, size):
-    """A rule area that keeps copper fill out of a rectangle on the top layer."""
-    area = pcbnew.ZONE(fp)
-    area.SetIsRuleArea(True)
-    area.SetLayerSet(lset(pcbnew.F_Cu))
-    area.SetDoNotAllowZoneFills(True)
-    area.SetDoNotAllowTracks(False)
-    area.SetDoNotAllowVias(False)
-    area.SetDoNotAllowPads(False)
-    area.SetDoNotAllowFootprints(False)
-    corners = area.Outline()
-    corners.NewOutline()
-    for dx, dy in ((-1, -1), (1, -1), (1, 1), (-1, 1)):
-        corners.Append(FromMM(x + dx * size[0] / 2), FromMM(plug_y(inward) + dy * size[1] / 2))
-    fp.Add(area)
 
 
 def silk_line(fp, start, end, width=0.15):
@@ -156,11 +130,13 @@ def plug():
     fp = pcbnew.FOOTPRINT(None)
     fp.SetFPID(pcbnew.LIB_ID(design.LIB_NEW, PLUG_NAME))
     fp.SetAttributes(pcbnew.FP_SMD)
+    legs = design.PLUG_LEGS
     fp.SetLibDescription(
         "HRO TYPE-C-31-G-07 USB Type-C plug, 24 contacts in two rows on one face of the board, shell on two legs through "
         "slots and two surface pads. Pad and slot positions from the drawing's recommended layout; contact pad width and "
-        "the solder paste over the legs from JLCPCB's footprint for C530607. The shell overhangs the board edge, which is "
-        f"drawn {design.PLUG_SET_BACK:.2f} mm back from the shell's rear face."
+        "the solder paste on the legs' lands from JLCPCB's footprint for C530607. The shell overhangs the board edge, "
+        f"which is drawn {design.PLUG_SET_BACK:.2f} mm back from the shell's rear face, and each slot is "
+        f"{legs['longer']:.2f} mm longer than the drawing's at the end nearer that edge."
     )
     last = 5.5 * PLUG["pitch"]
     for n in range(1, 13):
@@ -172,21 +148,18 @@ def plug():
             # every contact that is used is reached by a track, so the ground fill stays off these narrow pads
             pad.SetLocalZoneConnection(pcbnew.ZONE_CONNECTION_NONE)
 
-    legs = design.PLUG_LEGS
     edge = design.PLUG_SET_BACK                               # the board edge, measured like everything else here
     # the shell's surface pads start where the drawing has them, or as near the board edge as copper may come
     start, end = max(PLUG["shell_pad_in"][0], edge + EDGE_KEEP), PLUG["shell_pad_in"][1]
     inner = PLUG["shell_pads_apart"] / 2 - PLUG["shell_pad_width"] / 2
-    outer = legs["apart"] / 2 + PLUG["leg_pad"][0] / 2
-    far = legs["in"] + PLUG["leg_pad"][1] / 2
+    # each slot as the drawing has it, made longer at the end nearer the edge, and the land round it
+    slot = (legs["slot"][0], legs["slot"][1] + legs["longer"])
+    slot_in = legs["in"] - legs["longer"] / 2
+    land = (slot[0] + 2 * PLUG["leg_land"][0], slot[1] + 2 * PLUG["leg_land"][1])
+    outer = legs["apart"] / 2 + land[0] / 2
     for leg, tab, side in (("25", "27", -1), ("26", "28", 1)):
-        plug_pad(fp, leg, side * legs["apart"] / 2, legs["in"], PLUG["leg_pad"], through=legs["slot"])
+        plug_pad(fp, leg, side * legs["apart"] / 2, slot_in, land, through=slot)
         plug_pad(fp, tab, side * PLUG["shell_pads_apart"] / 2, (start + end) / 2, (PLUG["shell_pad_width"], end - start))
-        # One opening in the stencil over the shell pad and the leg's land together. The paste printed over
-        # the slot is what solders the leg in it. Some of it lands on solder mask, so the ground fill is
-        # kept out from under it.
-        paste_only(fp, side * (inner + outer) / 2, (start + far) / 2, (outer - inner, far - start))
-        no_fill(fp, side * (inner + outer) / 2, (start + far) / 2, (outer - inner + 0.2, far - start + 0.2))
 
     back, shell = PLUG["back_width"] / 2, PLUG["shell_width"] / 2
     rect(fp, pcbnew.F_Fab, -back, plug_y(PLUG["on_board"]), back, plug_y(0), 0.1)

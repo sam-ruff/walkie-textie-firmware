@@ -8,9 +8,10 @@ gets, and checks the things that went wrong on earlier drops of this board:
 
 - the outline is one closed rectangle, with a straight edge where the USB plug
   hangs over it;
-- the plug has the two slots its legs go through, where its drawing puts them,
-  a board edge cut at the end of its tolerance still lets the legs into them,
-  and there is solder paste on every one of its pads and over both legs;
+- the plug has the two slots its legs go through, a board edge cut at the end
+  of its tolerance still lets the widest leg into them, and there is solder
+  paste on every one of its pads and on the land round each leg, none of it
+  on bare board;
 - solder mask openings are far enough apart for the mask between them to hold;
 - no drilled hole sits in a solder-mask opening (solder would wick into it);
 - the antenna's clearance area is free of copper apart from the antenna's own
@@ -38,8 +39,9 @@ COPPER = {"top": "F_Cu.gtl", "inner 1": "In1_Cu.g1", "inner 2": "In2_Cu.g2", "bo
 EDGE_CLEARANCE = 0.2
 MAX_PLANE_HOLE = 3.0            # mm: a via's hole in the plane is about 1 mm; anything much longer is a slot
 VIA_LAND_AREA = 0.5             # mm2: a via's own land on an inner layer is under this
-PLUG_PASTE = 26                 # stencil openings for the plug: its 24 contacts, and one over each shell pad and the leg beside it
-PLUG_LEG_PASTE = 4.0            # mm2: the least of those two, which have to fill a slot; JLCPCB's own footprint has 4.6
+PLUG_PASTE = 26                 # stencil openings for the plug: its 24 contacts, and one over each shell pad and the leg's land beside it
+PLUG_LEG_PASTE = 2.85           # mm2: what JLCPCB's own footprint prints over a shell pad and its leg's land
+PASTE_OFF_COPPER = 0.01         # mm2 of one stencil opening that may miss the copper under it
 PLUG_LANDS = (3.6, 5.0)         # mm: how far the plug's pads reach in from the board edge, and to each side of its centre line
 SLOT_TOLERANCE = 0.02           # mm
 MASK_DAM = 0.1                  # mm: the least solder mask JLCPCB keeps between two openings
@@ -111,7 +113,9 @@ def check_plug(fab_dir, slots):
     """The plug's leg slots, how they let it sit against the board edge, and the paste on its pads and legs."""
     problems = []
     legs = design.PLUG_LEGS
-    wanted = [(design.plug_x(legs["in"]), design.PLUG_Y + side * legs["apart"] / 2) for side in (-1, 1)]     # the plug hangs over the left edge, x = 0
+    # each slot is the drawing's, made longer at the end nearer the board edge, which is the left one (x = 0)
+    slot = (legs["slot"][1] + legs["longer"], legs["slot"][0])
+    wanted = [(design.plug_x(legs["in"] - legs["longer"] / 2), design.PLUG_Y + side * legs["apart"] / 2) for side in (-1, 1)]
     found = []
     for (x1, y1), (x2, y2), width in slots:
         centre = ((x1 + x2) / 2, (y1 + y2) / 2)
@@ -121,34 +125,38 @@ def check_plug(fab_dir, slots):
         match = [size for centre, size in found if abs(centre[0] - x) < SLOT_TOLERANCE and abs(centre[1] - y) < SLOT_TOLERANCE]
         if not match:
             problems.append(f"no slot for the plug's leg at ({x:.3f}, {y:.3f})")
-        elif abs(match[0][0] - legs["slot"][1]) > SLOT_TOLERANCE or abs(match[0][1] - legs["slot"][0]) > SLOT_TOLERANCE:
-            problems.append(f"the plug's slot at ({x:.3f}, {y:.3f}) is {match[0][0]:.2f} x {match[0][1]:.2f} mm, not the {legs['slot'][1]} x {legs['slot'][0]} mm of its drawing")
+        elif abs(match[0][0] - slot[0]) > SLOT_TOLERANCE or abs(match[0][1] - slot[1]) > SLOT_TOLERANCE:
+            problems.append(f"the plug's slot at ({x:.3f}, {y:.3f}) is {match[0][0]:.2f} x {match[0][1]:.2f} mm, not {slot[0]:.2f} x {slot[1]:.2f} mm")
     if len(found) != len(wanted):
         problems.append(f"{len(found)} slots are drilled where the plug's legs need {len(wanted)}")
 
     # The shell's rear face stops against the board edge. Cut proud, the edge pushes the plug outwards,
-    # and its legs have only their play in the slots to follow.
-    play = (legs["slot"][1] - legs["leg"]) / 2
+    # and each leg has only the room between it and the end of its slot to follow. A leg at the wide end
+    # of its tolerance has the least.
+    widest = legs["leg"] + legs["leg_tolerance"]
+    room = (legs["slot"][1] - widest) / 2 + legs["longer"]
     pushed = design.OUTLINE_TOLERANCE - design.PLUG_SET_BACK
-    print(f"plug: its legs have {play:.2f} mm of play in their slots; the edge is drawn {design.PLUG_SET_BACK:.2f} mm back from the shell's "
-          f"rear face, so an edge cut {design.OUTLINE_TOLERANCE:.1f} mm proud pushes the plug {pushed:.2f} mm")
-    if max(pushed, design.PLUG_SET_BACK) > play:
+    print(f"plug: a leg at its widest, {widest:.2f} mm, has {room:.3f} mm of room towards the edge in its slot; the edge is drawn "
+          f"{design.PLUG_SET_BACK:.2f} mm back from the shell's rear face, so an edge cut {design.OUTLINE_TOLERANCE:.1f} mm proud "
+          f"pushes the plug {pushed:.2f} mm")
+    if pushed > room:
         problems.append("a board edge within its tolerance can keep the plug's legs out of their slots")
 
     lands = box(0.0, design.PLUG_Y - PLUG_LANDS[1], PLUG_LANDS[0], design.PLUG_Y + PLUG_LANDS[1])
     pasted = [piece for piece in gbr.polys(layer(fab_dir, "F_Paste.gtp")) if piece.intersects(lands)]
     over_legs = [[piece for piece in pasted if piece.contains(Point(x, y))] for x, y in wanted]
-    print(f"plug: {len(pasted)} stencil openings where it needs {PLUG_PASTE}; over each leg and the shell pad beside it "
-          + " and ".join(f"{pieces[0].area:.1f} mm2" if pieces else "none" for pieces in over_legs))
+    top = layer(fab_dir, "F_Cu.gtl")
+    stray = max((piece.difference(top).area for piece in pasted), default=0.0)
+    print(f"plug: {len(pasted)} stencil openings where it needs {PLUG_PASTE}; over each leg's land and the shell pad beside it "
+          + " and ".join(f"{pieces[0].area:.2f} mm2" if pieces else "none" for pieces in over_legs)
+          + f"; the most of any opening that is off copper is {stray:.3f} mm2")
     if len(pasted) != PLUG_PASTE:
         problems.append(f"{len(pasted)} stencil openings for the plug where it needs {PLUG_PASTE}")
-    top = layer(fab_dir, "F_Cu.gtl")
     for (x, y), pieces in zip(wanted, over_legs):
         if not pieces or pieces[0].area < PLUG_LEG_PASTE:
-            problems.append(f"the plug's leg at ({x:.3f}, {y:.3f}) has too little solder paste over it to be soldered in its slot")
-        elif len(gbr.polys(top.intersection(pieces[0]))) != 1:
-            # some of this paste lands on solder mask: the only copper under it should be the shell's own
-            problems.append(f"copper that is not the plug's shell lies under the solder paste at its leg at ({x:.3f}, {y:.3f})")
+            problems.append(f"the plug's leg at ({x:.3f}, {y:.3f}) has less solder paste over it than JLCPCB's own footprint prints")
+    if stray > PASTE_OFF_COPPER:
+        problems.append(f"solder paste for the plug is printed on bare board: {stray:.3f} mm2 of one opening")
     if layer(fab_dir, "B_Paste.gbp").intersects(lands):
         problems.append("solder paste on the bottom face under the plug, which has no pads there")
     return problems

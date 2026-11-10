@@ -18,12 +18,15 @@ JLCPCB places every part. Nothing is left to solder when the boards arrive.
 One part, the LoRa module, has to be sent to JLCPCB first, because they do not
 stock it.
 
-One behaviour is worth knowing before a board exists. The power mux
+Two things are worth knowing before a board exists. The power mux
 disconnects both supplies for some microseconds each time USB is plugged in
-or pulled out with a battery fitted. With both radios transmitting from a
-battery under about 2.3 V, the model's worst case lets the converter stop,
-and the supervisor then resets the ESP32. Firmware should expect to be
-restarted by a change of supply.
+or pulled out with a battery fitted. On a nearly flat battery, with a radio
+transmitting, that can stop the converter, and the supervisor then resets the
+ESP32. Firmware should expect to be restarted by a change of supply. And the
+firmware never drives the LoRa module's RF_SW pin, which the board holds
+high. Seeed's datasheet wants it low while transmitting, so transmit power
+needs measuring on the first board. Both are set out under "On the first
+boards".
 
 ## What is here
 
@@ -103,11 +106,11 @@ download JLCPCB's library entry for it. These are the checks it ends on:
   supply, and how far its output falls while it changes from one supply to
   the other (`tools/supply_change.py`).
 - The Gerbers and drill file themselves: one closed rectangular outline, the
-  two slots for the plug's legs where its drawing puts them, a board edge at
-  either end of its tolerance still letting the legs into them, solder paste
-  on the plug's pads and over both legs, 0.1 mm or more of solder mask
-  between any two openings, no hole in a pad, the antenna area clear, the
-  ground plane in one piece.
+  two slots for the plug's legs, a board edge at either end of its tolerance
+  still letting the widest leg into them, solder paste on the plug's pads
+  and on the land round each leg with none of it on bare board, 0.1 mm or
+  more of solder mask between any two openings, no hole in a pad, the
+  antenna area clear, the ground plane in one piece.
 - The numbers behind the radio layout: feed impedance, antenna land pattern
   and the ESP32 antenna's overhang. Then what the datasheets predict for
   radiated power and harmonics at the power the firmware sets, against the
@@ -122,7 +125,7 @@ download JLCPCB's library entry for it. These are the checks it ends on:
   into a live supply, and checks that only parts rated for it are ahead of
   the protection switch. It models a plug that loses contact and makes it
   again as well, when the switch is on and the ring reaches what is behind
-  it.
+  it, with the mux on USB and with the mux gone back to the battery.
 - The battery and sensor connectors: pin 1 where JST's drawing puts it, and
   a silkscreen legend that names the net on each pad.
 
@@ -141,15 +144,18 @@ download JLCPCB's library entry for it. These are the checks it ends on:
   plug (J1, C530607) is listed for standard assembly only, with a fixture,
   because its shell hangs 10.7 mm over the board edge.
 - Tell JLCPCB in the order's remarks that two parts hang over the board. J1
-  overhangs the left edge by 10.7 mm between 24 and 36 mm from the bottom,
-  and its shell reaches below the board's top face, so no rail or tab can
-  go there. The ESP32 module's antenna overhangs the top edge by about
-  6 mm, level with the board. Let their engineers place the rails or the
-  fixture to suit.
+  overhangs the left edge by 10.7 mm between 24 and 36 mm from the bottom.
+  Its shell is thicker than the board: it stands about 0.15 mm below the
+  bottom face, and its two legs about 0.8 mm, so no rail or tab can go
+  there and the board does not lie flat. The ESP32 module's antenna
+  overhangs the top edge by about 6 mm, level with the board. Let their
+  engineers place the rails or the fixture to suit.
 - JLCPCB's ordinary outline tolerance of 0.2 mm is enough. J1's shell stops
-  against the left edge, and the edge is drawn 0.1 mm back from where the
-  plug's drawing has it, so that an edge cut proud still lets the legs into
-  their slots.
+  against the left edge. The edge is drawn 0.1 mm back from where the
+  plug's drawing has it, and each slot is 0.2 mm longer than the drawing's
+  at the end nearer the edge, so that an edge cut proud still lets the legs
+  in. The plug's own drawing allows its legs more variation than that
+  covers. JLCPCB holds the plugs, so the first boards are where that shows.
 - In the placement preview, check which way round U11 sits. Its number has
   no footprint in JLCPCB's library, so the rotation in the file was worked
   out from their entry for the module with the connector. Pad 1 is the one
@@ -176,6 +182,11 @@ download JLCPCB's library entry for it. These are the checks it ends on:
   at JLCPCB (25 is the number of boards). On 10 November 2026 every line
   JLCPCB supplies was in stock for 25 boards. The thinnest were the timer at
   416, the USB switch at 1177, the plug at 1242 and the antenna at 1970.
+- If the firmware is built before the boards are ordered, have it drive
+  GPIO38: high to receive, low to transmit and to sleep. That is what
+  Seeed's datasheet for the LoRa module asks of its RF_SW pin, and it
+  removes the question in the next section. The board needs no change for
+  it.
 - The antenna match (L5, L6, with L7 unfitted) starts from the values in the
   Pulse datasheet. Tune it on a VNA on the real board, in its enclosure. The
   steps are in `hardware-design/CLAUDE.md`. A couple of boards from the
@@ -186,26 +197,46 @@ download JLCPCB's library entry for it. These are the checks it ends on:
 
 - Look at J1 from underneath. Each of its two legs should stand in its slot
   with solder round it. That solder comes from paste printed on the top
-  face over the leg and the shell pad beside it, as JLCPCB's own footprint
-  for the plug has it.
+  face on the land round each slot, as JLCPCB's own footprint for the plug
+  has it. Check too that the plug's shell sits against the board edge or
+  just clear of it, with both legs fully in.
+- Measure the transmit power at J3, on a board from the bench-test order,
+  twice: as built, and with RF_SW held low while it transmits. Tying the
+  end of R25 nearer the LoRa module to ground through 1 kohm does that,
+  and so does driving GPIO38 low from firmware. The board holds the
+  module's RF_SW pin high through R25, because the firmware never drives
+  GPIO38. High is right for receiving. Seeed's
+  datasheet has the pin low at other times, and Seeed's staff describe it
+  as the second control input of the module's antenna switch, where a high
+  level leaves the radio's own DIO2 in charge. If the two readings agree,
+  nothing needs doing. If the first is lower, the firmware has to drive
+  GPIO38.
 - Put a scope on C7 and on C31 and plug the board into a live socket, then
   again at the end of the longest extension lead you expect. C7 is ahead of
   the protection switch and may ring to about 10 V, which the parts there
-  are rated for. C31 is behind it and should rise smoothly over about four
-  milliseconds to the supply's voltage and no further.
+  are rated for. C31 is behind it and should rise smoothly over about
+  12 milliseconds to the supply's voltage and no further.
 - Repeat with a battery fitted, fresh and nearly flat, and watch C1 and the
   3.3 V rail as USB goes in and comes out. The mux passes whichever supply
   is the higher, so it changes over as the USB voltage crosses the
-  battery's. It disconnects both for some microseconds as it does, and C1,
-  C38 and C39 feed the converter alone. With LoRa transmitting from a
-  2.0 V battery the model's worst case leaves 1.58 V on C1, and the
-  converter stops at 1.5 V. With both radios transmitting from a battery
-  under 2.3 V the worst case is lower than that, and the supervisor then
-  resets the ESP32. That is a clean reset and the board carries on.
+  battery's. It disconnects both for some microseconds as it does, and C1
+  and C38 to C40 feed the converter alone. With 2.0 V at the battery
+  connector and LoRa transmitting, the model's worst case for one such
+  break leaves 1.76 V on C1, and the converter stops at 1.5 V. With both
+  radios transmitting it passes only from 2.05 V up. Below that the
+  supervisor resets the ESP32, which is a clean reset, and the board
+  carries on.
 - Count how often the mux changes over at one crossing. Its datasheet gives
   no hysteresis between the two inputs and no maximum for the break, so
-  both are assumptions in `tools/supply_change.py`. A battery with a high
-  internal resistance could make it change over more than once.
+  both are assumptions in `tools/supply_change.py`. A tired battery, whose
+  voltage moves a good deal as the load comes on and off it, could make
+  the mux change over two or three times in a row. In the same model two
+  such breaks with LoRa transmitting leave 1.56 V and three leave 1.33 V,
+  which stops the converter.
+- With 3.6 V on the battery connector and USB in, wiggle the plug and watch
+  C31. A battery that high lets the mux go back to it while the protection
+  switch is still on, and a plug that makes contact again would then ring
+  C31 past 6 V if D6 were not there. With D6 it should stay under 5 V.
 - TP2 makes the power-off edge by hand: touch it to 3.3 V and let go. Only
   do that while the firmware leaves IO4 as an input, and mind the pads
   beside it, which are at USB voltage when USB is in. Shorting TP3 to
@@ -247,29 +278,37 @@ design for production.
   legs through slots. The designer's plug clamped the board edge between
   two rows of tails and could only be soldered by hand. The new one needs
   no tongue on the board, so the outline is a plain rectangle. Its pads and
-  slots are where its drawing puts them. The contact pads are 0.27 mm wide
-  and the paste over the legs is as in JLCPCB's footprint for the part.
+  slots are where its drawing puts them, with each slot 0.2 mm longer at
+  the end nearer the edge. The contact pads are 0.27 mm wide and the paste
+  on the legs' lands is as in JLCPCB's footprint for the part.
 - U14, a TPS259531 protection switch, stands between the plug and the rest
   of the board. Plugged into a supply that is already on, the lead's
   inductance rings with whatever capacitance is on the input, and the mux,
   the converter and the timer allow 6 V on a supply that may be 5.5 V. U14
   is rated for 20 V. It waits for the ring to die on its own input, where
   the model gives 10.7 V at worst across C7, a 50 V part. Then it raises
-  VBUS at 1.3 V a millisecond, so nothing behind it sees a step and the
-  capacitors charge at under 100 mA. It limits the current to 1.37 A, and
-  once its input passes 5.5 to 5.9 V it holds its output at 5.7 V or less.
-  The capacitance straight across the plug is 0.1 uF, inside the 10 uF
-  that USB 2.0 allows. The model runs on every build. It is a model, and
-  its assumptions are at the top of `tools/hot_plug.py`.
+  VBUS at 0.42 V a millisecond, so nothing behind it sees a step and the
+  capacitors charge at under 100 mA. It passes USB power from 4.0 V, stops
+  under 3.7 V and limits the current to 1.37 A. Once its input passes 5.5
+  to 5.9 V it holds its output down, so VBUS cannot stay over 5.9 V. The
+  capacitance straight across the plug is 0.1 uF, inside the 10 uF that
+  USB 2.0 allows. The model runs on every build. It is a model, and its
+  assumptions are at the top of `tools/hot_plug.py`.
 - The power mux passes whichever of USB and the battery is the higher. Its
   select and mode pins are on ground, and R14, half of the divider that
   set a threshold on VBUS, is gone. A threshold above the battery's voltage
   joins USB to a lower output, which pulls VBUS back under the threshold,
   and the mux can then switch back and forth. A threshold below it drags
   the output down to the threshold at every unplug. R9 is now 10 k from
-  VBUS to ground, to empty C31 when USB goes. C38 and C39, 22 uF each,
-  join C1 on the mux's output for the microseconds in which it has
-  neither supply connected.
+  VBUS to ground, to empty C31 when USB goes. C38 and C39 (22 uF each) and
+  C40 (100 uF) join C1 on the mux's output for the microseconds in which
+  it has neither supply connected.
+- D6, a silicon diode from VBUS to the mux's output, is there for one
+  case. A battery over about 3.4 V, such as two fresh lithium cells, lets
+  the mux go back to it while U14 is still on. Only C7 and C31 are then
+  behind U14, and a plug that loses contact and makes it again would ring
+  them to about 7 V, on parts that allow 6 V. D6 turns that ring into the
+  capacitors on the mux's output, so VBUS stops near 5 V.
 - R37, a 0 ohm link, takes the place of a solder jumper. Whether it is
   fitted is a matter of which order is placed.
 - One part number serves each value: the designer's 10 k, 1 k, 5.1 k and
@@ -303,10 +342,11 @@ design for production.
   self-resonance that can be as low as 1.4 GHz.
 
 A designator is on the silkscreen only where it sits beside its own part and
-plainly nearer to it than to any other. On a board this dense that leaves 38
-of the 90 off. Every designator is on `fab/assembly.pdf`, inside its part's
-outline. The three buttons carry what they do in place of a designator: RST,
-BOOT and WAKE.
+plainly nearer to it than to any other. On a board this dense that leaves 40
+of the 92 off. Every designator is on `fab/assembly.pdf`, inside its part's
+outline, with a dot at pad 1 and a bar at each diode's cathode. The three
+buttons carry what they do in place of a designator: RST, BOOT and WAKE.
+The test pads TP2 and TP3 carry what is on them: IO4 and DONE.
 
 One thing differs from the brief and is kept as the designer had it. The
 wake timer is supplied from the mux's output, where the brief has it on the
