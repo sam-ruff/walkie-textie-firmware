@@ -14,8 +14,11 @@ pub mod lora_defaults {
     pub const FREQUENCY_HZ: u32 = 869_525_000;
     /// Long-range default. Adjustable at runtime (7-12) via the
     /// SetSpreadingFactor host command; resets to this default on reboot.
-    pub const SPREADING_FACTOR: u8 = 11;
-    pub const BANDWIDTH_KHZ: u32 = 250;
+    pub const SPREADING_FACTOR: u8 = 10;
+    /// Half the width of the sub-band. EN 300 220-2 wants the occupied
+    /// bandwidth inside the sub-band at every spreading factor and
+    /// temperature, and a 250 kHz signal fills it with nothing to spare.
+    pub const BANDWIDTH_KHZ: u32 = 125;
     /// Coding rate 4/8 (higher redundancy)
     pub const CODING_RATE: u8 = 8;
     /// TX power in dBm (supports -9 to +22)

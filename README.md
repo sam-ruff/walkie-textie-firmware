@@ -330,10 +330,18 @@ The host must be ready to receive these at any time.
 
 ### Radio Configuration and Duty Cycle
 
-The radio boots at 869.525 MHz, spreading factor 11, 250 kHz bandwidth, coding
+The radio boots at 869.525 MHz, spreading factor 10, 125 kHz bandwidth, coding
 rate 4/8 and +22 dBm. The spreading factor can be changed at runtime with
-`SetSpreadingFactor` (7-12); it is not persisted and reverts to SF11 on reboot.
-Both radios in a link must use the same spreading factor.
+`SetSpreadingFactor` (7-12); it is not persisted and reverts to SF10 on reboot.
+Both radios in a link must use the same spreading factor and bandwidth, so a
+radio built before the bandwidth changed from 250 kHz cannot hear one built
+after.
+
+The bandwidth is half the 250 kHz sub-band on purpose. EN 300 220-2 wants the
+occupied bandwidth inside the sub-band at every spreading factor and
+temperature, and a 250 kHz signal leaves no room. SF10 at 125 kHz has the same
+symbol time and sensitivity as SF11 at 250 kHz, and about nine tenths of its
+bit rate.
 
 Transmissions are checked against the EU duty cycle rules (ERC 70-03) for the
 sub-band containing the configured frequency; 869.4-869.65 MHz allows 10%
@@ -341,8 +349,8 @@ airtime per sliding hour (360 s). Spent airtime is tracked with the Semtech
 time-on-air formula, and a `LoraTx` that would exceed the remaining budget is
 refused without transmitting: the firmware replies `TxRefused` with the number
 of seconds until enough budget frees up (`0xFFFFFFFF` if the packet exceeds the
-entire hourly budget). At SF11 a full 255-byte packet costs about 3.25 s of
-airtime, so roughly 110 of them fit in an hour; lower spreading factors are far
+entire hourly budget). At SF10 a full 255-byte packet costs about 3.57 s of
+airtime, so roughly 100 of them fit in an hour; lower spreading factors are far
 cheaper.
 
 ### Example Frames

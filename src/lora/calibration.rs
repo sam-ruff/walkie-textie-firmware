@@ -79,7 +79,8 @@ mod tests {
         assert!(ldro_enabled(11, 125));
         assert!(ldro_enabled(12, 125));
         assert!(ldro_enabled(12, 250));
-        // The firmware default (SF11 at 250 kHz) sits below the threshold.
+        // The firmware default (SF10 at 125 kHz) sits below the threshold.
+        assert!(!ldro_enabled(10, 125));
         assert!(!ldro_enabled(11, 250));
         assert!(!ldro_enabled(12, 500));
         assert!(!ldro_enabled(7, 125));

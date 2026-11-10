@@ -18,6 +18,37 @@ ESP32-S3 + WIO-SX1262 LoRa firmware (Rust/Embassy). The PCB design lives in
   (found and hardware-verified on the LoRaMqttHub fork, which shares this
   file).
 
+## LoRa bandwidth is 125 kHz, changed on 10 November 2026
+
+`src/config.rs` used to set a 250 kHz LoRa bandwidth with SF11 as the default,
+in a sub-band that is 250 kHz wide (869.4 to 869.65 MHz). EN 300 220-2 V3.3.1
+wants the 99% occupied bandwidth, at the widest spreading factor the host can
+select, inside the sub-band at every temperature. A model of the signal
+(`hardware-design/v3/kicad/tools/lora_spectrum.py`, printed by `check_rf.py`
+on every board build) gave 247 to 250 kHz at SF11 and 262 kHz at SF7, so the
+radio was not going to pass.
+
+It is now 125 kHz with SF10 as the default. SF10 at 125 kHz has the symbol
+time and sensitivity of SF11 at 250 kHz and about nine tenths of its bit rate.
+The model gives 124 to 133 kHz across SF7 to SF12, 58 kHz or more clear on
+each side. The transmit timeout in `src/lora/driver.rs` now follows the
+packet's time on air (`transmit_timeout_ms` in `src/lora/airtime.rs`), because
+a 255-byte packet at SF12 in 125 kHz is on air for 14 seconds and the old
+fixed wait was 10.
+
+- The change was made without a board. Host tests and both ESP32-S3 builds
+  pass. The hardware integration tests have not been run on it, and nothing
+  about the occupied bandwidth has been measured.
+- A radio built before the change cannot hear one built after. Flash every
+  radio together.
+- The hub fork (`~/RustroverProjects/walkie-textie-hub-firmware`) still has
+  SF11 at 250 kHz and the fixed 10 second wait. It needs the same change
+  before it can talk to these radios.
+- The owner did not ask for this change by name. It follows the fallback
+  written into `walkie-textie-flutter/docs/COMPLIANCE.md` (T1). To go back,
+  restore `SPREADING_FACTOR` and `BANDWIDTH_KHZ` in `src/config.rs` and the
+  defaults in the tests and in `integration_tests/src/protocol.rs`.
+
 ## Soil sensor board (`hardware-design/v3`)
 
 The LoRa soil sensor is a second board that keeps this firmware's pin map for

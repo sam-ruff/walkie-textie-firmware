@@ -343,7 +343,7 @@ impl DeviceClient {
 
     /// Wait for an RxPacket whose data payload equals `expected`.
     ///
-    /// The radio is slow (SF11), so a packet from an earlier exchange can be
+    /// The radio is slow at its default settings, so a packet from an earlier exchange can be
     /// delivered late and land in the next read; skipping non-matching frames
     /// keeps the strict per-message tests in sync without masking real loss (a
     /// missing packet still times out). The trailing 3 bytes are rssi+snr.

@@ -66,6 +66,23 @@ pub fn time_on_air_ms(
     total_us.div_ceil(1000) as u32
 }
 
+/// Slack allowed on top of a packet's time on air before its transmission
+/// counts as failed.
+const TRANSMIT_SLACK_MS: u32 = 1_000;
+
+/// How long to wait for a transmission to finish before giving it up.
+///
+/// It follows the packet, because the longest one this firmware can send
+/// (255 bytes at SF12 in 125 kHz) is on air for 14 seconds.
+pub fn transmit_timeout_ms(
+    spreading_factor: u8,
+    bandwidth_khz: u32,
+    coding_rate: u8,
+    payload_len: usize,
+) -> u32 {
+    time_on_air_ms(spreading_factor, bandwidth_khz, coding_rate, payload_len) + TRANSMIT_SLACK_MS
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -91,9 +108,34 @@ mod tests {
     }
 
     #[test]
-    fn max_payload_at_sf11_default_is_about_three_seconds() {
+    fn max_payload_at_sf11_in_250_khz_is_about_three_seconds() {
         // 396.25 symbols of 8.192 ms at SF11/BW250/CR4/8, no LDRO.
         assert_eq!(time_on_air_ms(11, 250, 8, 255), 3_247);
+    }
+
+    #[test]
+    fn max_payload_at_the_default_is_about_three_and_a_half_seconds() {
+        // 436.25 symbols of 8.192 ms at SF10/BW125/CR4/8, no LDRO.
+        assert_eq!(time_on_air_ms(10, 125, 8, 255), 3_574);
+    }
+
+    #[test]
+    fn max_payload_at_sf12_in_125_khz_is_fourteen_seconds() {
+        // 428.25 symbols of 32.768 ms at SF12/BW125/CR4/8, LDRO on.
+        assert_eq!(time_on_air_ms(12, 125, 8, 255), 14_033);
+    }
+
+    #[test]
+    fn transmit_timeout_outlasts_every_packet_the_firmware_can_send() {
+        for bandwidth_khz in [125, 250] {
+            for sf in 7..=12 {
+                for payload_len in [1, 64, 255] {
+                    let on_air = time_on_air_ms(sf, bandwidth_khz, 8, payload_len);
+                    let timeout = transmit_timeout_ms(sf, bandwidth_khz, 8, payload_len);
+                    assert!(timeout > on_air, "SF{sf} at {bandwidth_khz} kHz, {payload_len} bytes");
+                }
+            }
+        }
     }
 
     #[test]

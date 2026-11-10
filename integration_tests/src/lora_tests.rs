@@ -12,7 +12,7 @@ use clap::Parser;
 use colored::Colorize;
 
 use device::{resolve_two_ports, DeviceClient};
-use protocol::ResponseId;
+use protocol::{ResponseId, DEFAULT_SPREADING_FACTOR};
 
 #[derive(Parser)]
 #[command(name = "lora-tests")]
@@ -60,8 +60,8 @@ fn main() -> anyhow::Result<()> {
     verify_device(&mut device_a, "A")?;
     verify_device(&mut device_b, "B")?;
 
-    // Run the suite at SF7: ~12x less airtime than the SF11 default, so the
-    // tests are faster and burn far less duty cycle budget. Restored below.
+    // Run the suite at SF7: several times less airtime than the default, so
+    // the tests are faster and burn far less duty cycle budget. Restored below.
     println!("Switching both devices to SF7 for the test run...");
     device_a.set_spreading_factor(7)?;
     device_b.set_spreading_factor(7)?;
@@ -156,13 +156,13 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-    // Restore the SF11 default so the boards are left in their boot state
+    // Restore the default so the boards are left in their boot state
     // (best effort: a reboot also restores it).
-    println!("\nRestoring both devices to SF11...");
-    if let Err(e) = device_a.set_spreading_factor(11) {
+    println!("\nRestoring both devices to SF{}...", DEFAULT_SPREADING_FACTOR);
+    if let Err(e) = device_a.set_spreading_factor(DEFAULT_SPREADING_FACTOR) {
         println!("  Device A restore failed: {}", e);
     }
-    if let Err(e) = device_b.set_spreading_factor(11) {
+    if let Err(e) = device_b.set_spreading_factor(DEFAULT_SPREADING_FACTOR) {
         println!("  Device B restore failed: {}", e);
     }
 

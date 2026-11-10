@@ -3,7 +3,9 @@
 use colored::Colorize;
 
 use crate::device::DeviceClient;
-use crate::protocol::{CommandId, ResponseId, ResponseStatus};
+use crate::protocol::{
+    CommandId, ResponseId, ResponseStatus, DEFAULT_BANDWIDTH_KHZ, DEFAULT_SPREADING_FACTOR,
+};
 
 /// Test result.
 pub struct TestResult {
@@ -59,7 +61,7 @@ pub fn run_all_tests(device: &mut DeviceClient) -> Vec<TestResult> {
         run_test("GetVersion returns version bytes", device, test_get_version),
         run_test("Invalid command returns error", device, test_invalid_command),
         run_test("Multiple GetVersion calls succeed", device, test_multiple_get_version),
-        run_test("GetRadioConfig reports SF11 default", device, test_radio_config_default),
+        run_test("GetRadioConfig reports the defaults", device, test_radio_config_default),
         run_test("SetSpreadingFactor applies and restores", device, test_set_spreading_factor),
         run_test("Out-of-range SF is rejected", device, test_invalid_spreading_factor),
     ]
@@ -182,8 +184,14 @@ fn test_radio_config_default(device: &mut DeviceClient) -> TestResult {
             match parse_radio_config(&response.payload) {
                 Ok((freq, sf, bw, _cr, _power)) => {
                     print!("(SF{} @ {} Hz, {} kHz) ", sf, freq, bw);
-                    if sf != 11 {
-                        return TestResult::fail("test", &format!("Expected SF11 default, got SF{}", sf));
+                    if sf != DEFAULT_SPREADING_FACTOR || bw != DEFAULT_BANDWIDTH_KHZ {
+                        return TestResult::fail(
+                            "test",
+                            &format!(
+                                "Expected SF{} in {} kHz, got SF{} in {} kHz",
+                                DEFAULT_SPREADING_FACTOR, DEFAULT_BANDWIDTH_KHZ, sf, bw
+                            ),
+                        );
                     }
                     TestResult::pass("test")
                 }
@@ -197,7 +205,7 @@ fn test_radio_config_default(device: &mut DeviceClient) -> TestResult {
 fn test_set_spreading_factor(device: &mut DeviceClient) -> TestResult {
     // Change SF, verify the reply and a fresh read, then restore the default
     // so later over-the-air tests still match other boards.
-    for target in [9u8, 11u8] {
+    for target in [9u8, DEFAULT_SPREADING_FACTOR] {
         match device.send_command(CommandId::SetSpreadingFactor, &[target]) {
             Ok(response) => {
                 if response.resp_id != ResponseId::RadioConfig {

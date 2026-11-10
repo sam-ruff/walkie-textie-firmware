@@ -7,6 +7,10 @@ use crc::{Crc, CRC_16_XMODEM};
 /// Protocol version (must match firmware)
 pub const PROTOCOL_VERSION: u8 = 1;
 
+/// The radio settings a board boots with (must match the firmware's `src/config.rs`).
+pub const DEFAULT_SPREADING_FACTOR: u8 = 10;
+pub const DEFAULT_BANDWIDTH_KHZ: u32 = 125;
+
 /// Command IDs matching the firmware protocol.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]

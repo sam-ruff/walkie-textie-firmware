@@ -1,13 +1,13 @@
 //! Duty cycle lockout test (single device).
 //!
 //! Deliberately spends the radio's hourly airtime budget (~6 minutes of real
-//! transmission at SF11), then verifies the firmware:
+//! transmission at the default settings), then verifies the firmware:
 //! - refuses further transmissions with a TxRefused retry hint,
 //! - still accepts a spreading factor change while locked out,
 //! - stays locked out at the cheaper spreading factor once the budget is dry.
 //!
 //! Ends by rebooting the device, which clears the in-RAM accounting and
-//! restores the SF11 default.
+//! restores the default spreading factor.
 
 mod device;
 mod protocol;
@@ -19,10 +19,12 @@ use clap::Parser;
 use colored::Colorize;
 
 use device::{resolve_port, DeviceClient};
-use protocol::{CommandId, ResponseId};
+use protocol::{CommandId, ResponseId, DEFAULT_SPREADING_FACTOR};
 
-/// Generous ceiling on sends: the 10% band fits ~110 max-size SF11 packets.
-const MAX_SF11_SENDS: usize = 130;
+/// Time on air of a 255-byte packet at the default settings (SF10, 125 kHz, CR 4/8).
+const MAX_PACKET_MS: usize = 3_574;
+/// Generous ceiling on sends: the 10% band fits ~100 max-size packets at the default.
+const MAX_DEFAULT_SENDS: usize = 130;
 /// Draining the leftover headroom at SF7 takes at most a handful of packets.
 const MAX_SF7_DRAIN: usize = 25;
 
@@ -53,29 +55,36 @@ fn main() -> anyhow::Result<()> {
 
     let mut device = DeviceClient::new(&port, args.baud)?;
     device.wait_ready(Duration::from_secs(3))?;
-    // A max-size SF11 packet is ~3.25 s on air; leave slack for the reply.
+    // A max-size packet at the default is ~3.57 s on air; leave slack for the reply.
     device.set_timeout(Duration::from_secs(12));
 
     // The budget must be full for the packet counts below to mean anything.
-    print!("Checking SF11 default... ");
+    print!("Checking SF{} default... ", DEFAULT_SPREADING_FACTOR);
     let sf = read_spreading_factor(&mut device)?;
-    if sf != 11 {
-        anyhow::bail!("Expected SF11 default, got SF{} - reboot the device first", sf);
+    if sf != DEFAULT_SPREADING_FACTOR {
+        anyhow::bail!(
+            "Expected SF{} default, got SF{} - reboot the device first",
+            DEFAULT_SPREADING_FACTOR,
+            sf
+        );
     }
     println!("{}", "OK".green());
 
     // Phase 1: spend the budget with max-size packets until refused.
-    println!("Spending the airtime budget at SF11 (~3.25 s per packet)...");
+    println!(
+        "Spending the airtime budget at SF{} (~3.57 s per packet)...",
+        DEFAULT_SPREADING_FACTOR
+    );
     let payload = [0xAA_u8; 255];
     let mut sent = 0;
     let mut retry_secs = None;
-    for i in 0..MAX_SF11_SENDS {
+    for i in 0..MAX_DEFAULT_SENDS {
         let response = device.lora_tx(&payload)?;
         match response.resp_id {
             ResponseId::TxComplete => {
                 sent += 1;
                 if sent % 10 == 0 {
-                    print!("  {} packets (~{} s airtime)\r", sent, sent * 3247 / 1000);
+                    print!("  {} packets (~{} s airtime)\r", sent, sent * MAX_PACKET_MS / 1000);
                     std::io::stdout().flush().ok();
                 }
             }
@@ -88,11 +97,11 @@ fn main() -> anyhow::Result<()> {
         }
     }
     let retry_secs =
-        retry_secs.ok_or_else(|| anyhow::anyhow!("No refusal after {} packets", MAX_SF11_SENDS))?;
+        retry_secs.ok_or_else(|| anyhow::anyhow!("No refusal after {} packets", MAX_DEFAULT_SENDS))?;
 
-    // ~110 packets of 3.247 s fill the 360 s allowance of the 10% band.
-    if !(100..=115).contains(&sent) {
-        anyhow::bail!("Refusal after {} packets; expected ~110 for the 10% band", sent);
+    // ~100 packets of 3.574 s fill the 360 s allowance of the 10% band.
+    if !(90..=105).contains(&sent) {
+        anyhow::bail!("Refusal after {} packets; expected ~100 for the 10% band", sent);
     }
     if retry_secs == 0 || retry_secs > 3_600 {
         anyhow::bail!("Retry hint {} s is outside (0, 3600]", retry_secs);
@@ -100,7 +109,7 @@ fn main() -> anyhow::Result<()> {
     println!(
         "  {} Lockout hit after ~{} s airtime, retry hint {} s",
         "PASS".green().bold(),
-        sent * 3247 / 1000,
+        sent * MAX_PACKET_MS / 1000,
         retry_secs
     );
 
@@ -154,7 +163,7 @@ fn main() -> anyhow::Result<()> {
     println!("{}", "PASS".green().bold());
 
     // Leave the board usable: a reboot clears the in-RAM accounting and
-    // restores the SF11 default (the port re-enumerates). Reboot (0x03) sends
+    // restores the default spreading factor (the port re-enumerates). Reboot (0x03) sends
     // no reply, so drop the wait to a moment.
     println!("Rebooting the device to clear the accounting...");
     device.set_timeout(Duration::from_millis(500));

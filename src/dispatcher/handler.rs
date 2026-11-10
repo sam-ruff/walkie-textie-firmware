@@ -301,7 +301,7 @@ mod tests {
     }
 
     #[test]
-    fn get_radio_config_reports_sf11_default() {
+    fn get_radio_config_reports_the_default() {
         let mut dispatcher = CommandDispatcher::new();
         let mut radio = MockLoraRadio::new();
 
@@ -312,7 +312,7 @@ mod tests {
 
             match response {
                 Response::RadioConfig { frequency_hz, spreading_factor, .. } => {
-                    assert_eq!(spreading_factor, 11, "default must be SF11");
+                    assert_eq!(spreading_factor, 10, "default must be SF10");
                     assert_eq!(frequency_hz, 869_525_000);
                 }
                 _ => panic!("Expected RadioConfig response"),
@@ -345,7 +345,7 @@ mod tests {
             assert_eq!(applied.spreading_factor, 7);
             // Everything else keeps the defaults.
             assert_eq!(applied.frequency_hz, 869_525_000);
-            assert_eq!(applied.bandwidth_khz, 250);
+            assert_eq!(applied.bandwidth_khz, 125);
         });
     }
 
@@ -396,7 +396,7 @@ mod tests {
                 .await;
             match response {
                 Response::RadioConfig { spreading_factor, .. } => {
-                    assert_eq!(spreading_factor, 11);
+                    assert_eq!(spreading_factor, 10);
                 }
                 _ => panic!("Expected RadioConfig response"),
             }
@@ -415,8 +415,8 @@ mod tests {
             let mut data = Vec::new();
             data.extend_from_slice(&[0xAA; 255]).unwrap();
 
-            // A 255-byte packet at SF11/BW250/CR4/8 is ~3.25 s on air; the 10%
-            // band allows 360 s per hour, so at most 110 fit.
+            // A 255-byte packet at SF10/BW125/CR4/8 is ~3.57 s on air; the 10%
+            // band allows 360 s per hour, so at most 100 fit.
             let mut sent = 0;
             let mut refused_at = None;
             for i in 0..130u64 {
@@ -436,7 +436,7 @@ mod tests {
             }
 
             assert_eq!(refused_at, Some(sent), "refusal must follow the last success");
-            assert!((108..=112).contains(&sent), "got {sent} packets through");
+            assert!((98..=102).contains(&sent), "got {sent} packets through");
 
             // A sliding hour later the budget is free again.
             let response = dispatcher

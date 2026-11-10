@@ -4,6 +4,7 @@
 
 use crate::config::protocol::MAX_LORA_PAYLOAD;
 use crate::config::tcxo;
+use crate::lora::airtime::transmit_timeout_ms;
 use crate::lora::calibration::{image_cal_params, ldro_enabled, CALIBRATE_ALL};
 use crate::lora::traits::{LoraConfig, LoraError, LoraRadio, RxPacket};
 use embassy_time::{with_timeout, Duration, Timer};
@@ -632,6 +633,16 @@ where
             return Err(LoraError::InvalidConfig);
         }
 
+        let Some(config) = &self.config else {
+            return Err(LoraError::NotInitialised);
+        };
+        let timeout_ms = transmit_timeout_ms(
+            config.spreading_factor,
+            config.bandwidth_khz,
+            config.coding_rate,
+            data.len(),
+        );
+
         // Set to standby (clears in_continuous_rx); arm_receive re-arms
         // continuous RX afterwards.
         self.set_standby_internal().await?;
@@ -649,8 +660,8 @@ where
         // Start transmission (timeout 0 = no timeout)
         self.write_command(cmd::SET_TX, &[0x00, 0x00, 0x00]).await?;
 
-        // Wait for TX done (10 second timeout)
-        let irq_status = self.wait_for_irq(10000).await?;
+        // Wait for TX done, for as long as this packet is on air and a little more
+        let irq_status = self.wait_for_irq(timeout_ms).await?;
 
         // Clear IRQ after reading (Semtech pattern)
         self.clear_irq(irq_status).await?;
@@ -999,7 +1010,7 @@ mod host_tests {
     }
 
     #[test]
-    fn init_applies_sf11_default() {
+    fn init_applies_the_default_modulation() {
         embassy_time::MockDriver::get().reset();
         let writes = Rc::new(RefCell::new(StdVec::new()));
         let mut driver = build_driver(writes.clone());
@@ -1010,9 +1021,9 @@ mod host_tests {
         let modulation = first_index(&writes, cmd::SET_MODULATION_PARAMS)
             .expect("modulation params must be set during init");
         // [opcode, SF, BW, CR, LDRO]
-        assert_eq!(writes[modulation][1], 11, "default must be SF11");
-        assert_eq!(writes[modulation][2], 0x05, "250 kHz bandwidth code");
-        assert_eq!(writes[modulation][4], 0x00, "SF11 at 250 kHz needs no LDRO");
+        assert_eq!(writes[modulation][1], 10, "default must be SF10");
+        assert_eq!(writes[modulation][2], 0x04, "125 kHz bandwidth code");
+        assert_eq!(writes[modulation][4], 0x00, "SF10 at 125 kHz needs no LDRO");
     }
 
     #[test]
